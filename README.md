@@ -40,36 +40,36 @@ private:
 
 int main()
 {
-    const int n=40960;
-		Box box[n];
-		for(int i=0;i<n;i++)
-		{
-			auto x1 = /* generate your box coordinate */;
-			auto y1 = /* generate your box coordinate */;
-			auto z1 = /* generate your box coordinate */;
-		
-      // some computation to keep density same for different values of n
-			float dx = 0.1f/std::pow(n,1.0f/3);
-			box[i]=Box(x1,y1,z1,x1+dx,y1+dx,z1+dx,i);
-		}
+	const int n=40960;
+	Box box[n];
+	for(int i=0;i<n;i++)
+	{
+		auto x1 = /* generate your box coordinate */;
+		auto y1 = /* generate your box coordinate */;
+		auto z1 = /* generate your box coordinate */;
 
-		FastColDetLib::FixedGrid<float> grid;
-		FastColDetLib::BruteForce<float> bruteForce;
-		std::vector<FastColDetLib::CollisionPair<float>> coll3D,coll3Dbrute;
+		// some computation to keep density same for different values of n
+		float dx = 0.1f/std::pow(n,1.0f/3);
+		box[i]=Box(x1,y1,z1,x1+dx,y1+dx,z1+dx,i);
+	}
 
-		grid.add(&box[0],n);
-		bruteForce.add(&box[0],n);
+	FastColDetLib::FixedGrid<float> grid;
+	FastColDetLib::BruteForce<float> bruteForce;
+	std::vector<FastColDetLib::CollisionPair<float>> coll3D,coll3Dbrute;
 
-    coll3D = grid.getCollisions();            // 14.5 milliseconds (fx8150 at 2.1GHz)
-    coll3Dbrute = bruteForce.getCollisions(); // 15.3 seconds (fx8150 at 2.1GHz)
-    
-    for(auto& pair:coll3D)
-    {
-        int particleId1 = pair.getParticle1()->getId();
-        int particleId2 = pair.getParticle2()->getId();
-        // compute something using indices of particles that are colliding
-    }
+	grid.add(&box[0],n);
+	bruteForce.add(&box[0],n);
 
-  return 0;
+	coll3D = grid.getCollisions();            // 14.5 milliseconds (fx8150 at 2.1GHz)
+	coll3Dbrute = bruteForce.getCollisions(); // 15.3 seconds (fx8150 at 2.1GHz)
+
+	for(auto& pair:coll3D)
+	{
+		int particleId1 = pair.getParticle1()->getId();
+		int particleId2 = pair.getParticle2()->getId();
+		// compute something using indices of particles that are colliding
+	}
+
+	return 0;
 }
 ```
