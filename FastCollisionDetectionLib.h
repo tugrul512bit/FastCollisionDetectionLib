@@ -192,14 +192,14 @@ namespace FastColDetLib
 
 
 	template<typename CoordType>
-	class FixedGrid
+	class AdaptiveGrid
 	{
 public:
 		// 63 storage = 64 int per cell (1 for count)
-		FixedGrid(const int width=64, const int height=64, const int depth=64, const int storage=63)
+		AdaptiveGrid(const int width=64, const int height=64, const int depth=64, const int storage=63)
 		{
 			fields = std::make_shared<FixedGridFields<CoordType>>(width,height,depth,storage);
-			subFields = std::make_shared<std::vector<FixedGrid<CoordType>>>();
+			subFields = std::make_shared<std::vector<AdaptiveGrid<CoordType>>>();
 			subFieldIndex = std::make_shared<int>();
 		}
 
@@ -376,7 +376,7 @@ public:
 
 									// todo: convert particle id to current grid's array index instead of parent grid's array index
 									// creating a grid in this cell
-									subFields->push_back(FixedGrid<CoordType>(4,4,4,4));
+									subFields->push_back(AdaptiveGrid<CoordType>(4,4,4,4));
 
 									/* changing this cell to "grid" type  */
 									fields->setCellData(cellIndex,-1,-curSub);
@@ -473,7 +473,7 @@ private:
 
 
 		std::shared_ptr<FixedGridFields<CoordType>> fields;
-		std::shared_ptr<std::vector<FixedGrid<CoordType>>> subFields;
+		std::shared_ptr<std::vector<AdaptiveGrid<CoordType>>> subFields;
 		std::shared_ptr<int> subFieldIndex;
 	};
 
