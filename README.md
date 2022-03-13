@@ -61,7 +61,7 @@ int main()
 		box[i]=Box(x1,y1,z1,x1+dx,y1+dx,z1+dx,i);
 	}
 
-	FastColDetLib::FixedGrid<float> grid(	64, // number of cells on X dimension
+	FastColDetLib::AdaptiveGrid<float> grid(	64, // number of cells on X dimension
 						64, // number of cells on Y dimension
 						64, // number of cells on Z dimension
 						35  // max particles per cell before cell becomes a sub-grid
