@@ -137,10 +137,9 @@ namespace FastColDetLib
 		}
 
 		inline
-		const int numParticlesAtCellIncrement(const int indexX, const int indexY, const int indexZ, int& computedCellIndex) noexcept
+		void numParticlesAtCellIncrement(const int computedCellIndex) noexcept
 		{
-			computedCellIndex=indexX + indexY*width + indexZ*width*height;
-			return grid[computedCellIndex]++;
+			grid[computedCellIndex]++;
 		}
 
 		inline
@@ -168,16 +167,28 @@ namespace FastColDetLib
 		}
 
 
-	private:
+
+		std::vector<IParticle<CoordType>*> particles;
+		// some SOA for speed optimization
+		std::vector<CoordType> xMinVec;
+		std::vector<CoordType> xMaxVec;
+		std::vector<CoordType> yMinVec;
+		std::vector<CoordType> yMaxVec;
+		std::vector<CoordType> zMinVec;
+		std::vector<CoordType> zMaxVec;
+		std::map<int,std::map<int,bool>> coll;
+
 		// first integer in cell = number of particles. -1: another grid (adaptiveness)
 		std::vector<int> grid;
-		std::vector<char> scanIndexList;
+
 		const int width;
 		const int height;
 		const int depth;
 		const int storage;
 		const int stride;
 	};
+
+
 
 	template<typename CoordType>
 	class FixedGrid
@@ -187,30 +198,57 @@ public:
 		FixedGrid(const int width=64, const int height=64, const int depth=64, const int storage=63)
 		{
 			fields = std::make_shared<FixedGridFields<CoordType>>(width,height,depth,storage);
+			subFields = std::make_shared<std::vector<FixedGrid<CoordType>>>();
+			subFieldIndex = std::make_shared<int>();
 		}
 
+		// add particle pointers to compute all-vs-all comparisons in an optimized way
 		template<typename Derived>
 		void add(Derived * particlesPrm, int numParticlesToAdd)
 		{
 			for(int i=0;i<numParticlesToAdd;i++)
 			{
-				particles.push_back(static_cast<IParticle<CoordType>*>(particlesPrm+i));
+				fields->particles.push_back(static_cast<IParticle<CoordType>*>(particlesPrm+i));
 			}
 		}
 
-		std::vector<CollisionPair<CoordType>> getCollisions()
+
+
+
+		inline
+		const bool intersectDim(const CoordType minx, const CoordType maxx, const CoordType minx2, const CoordType maxx2) const noexcept
 		{
+			return !((maxx < minx2) || (maxx2 < minx));
+		}
+
+
+		// debugCtr: assigns number of total (nested)grid objects created during computations
+		std::vector<CollisionPair<CoordType>> getCollisions(int& debugCtr=0)
+		{
+			subFields->clear();
+			*subFieldIndex=0;
+			fields->clearGrid();
+
 			std::vector<CollisionPair<CoordType>> result;
-			CoordType minX = particles[0]->getMinX();
-			CoordType minY = particles[0]->getMinY();
-			CoordType minZ = particles[0]->getMinZ();
-			CoordType maxX = particles[0]->getMaxX();
-			CoordType maxY = particles[0]->getMaxY();
-			CoordType maxZ = particles[0]->getMaxZ();
-			const int sz = particles.size();
+			CoordType minX = fields->particles[0]->getMinX();
+			CoordType minY = fields->particles[0]->getMinY();
+			CoordType minZ = fields->particles[0]->getMinZ();
+			CoordType maxX = fields->particles[0]->getMaxX();
+			CoordType maxY = fields->particles[0]->getMaxY();
+			CoordType maxZ = fields->particles[0]->getMaxZ();
+			const int sz = fields->particles.size();
+			if(fields->xMinVec.size()<sz)
+			{
+				fields->xMinVec.resize(sz);
+				fields->xMaxVec.resize(sz);
+				fields->yMinVec.resize(sz);
+				fields->yMaxVec.resize(sz);
+				fields->zMinVec.resize(sz);
+				fields->zMaxVec.resize(sz);
+			}
 			for(int i=0;i<sz;i++)
 			{
-				const IParticle<CoordType>* const p = particles[i];
+				const IParticle<CoordType>* const p = fields->particles[i];
 				const CoordType minx = p->getMinX();
 				const CoordType maxx = p->getMaxX();
 
@@ -219,6 +257,13 @@ public:
 
 				const CoordType minz = p->getMinZ();
 				const CoordType maxz = p->getMaxZ();
+
+				fields->xMinVec[i]=minx;
+				fields->xMaxVec[i]=maxx;
+				fields->yMinVec[i]=miny;
+				fields->yMaxVec[i]=maxy;
+				fields->zMinVec[i]=minz;
+				fields->zMaxVec[i]=maxz;
 
 				if(minx<minX)
 					minX = minx;
@@ -255,6 +300,7 @@ public:
 			const int w = fields->getWidth();
 			const int h = fields->getHeight();
 			const int d = fields->getDepth();
+			const int sto = fields->getStorage();
 			const CoordType deltaX = (maxX - minX)/w;
 			const CoordType deltaY = (maxY - minY)/h;
 			const CoordType deltaZ = (maxZ - minZ)/d;
@@ -263,18 +309,19 @@ public:
 
 			const int maxParticlesPerCell = fields->getStorage();
 
-			fields->clearGrid();
+
+
 			for(int i=0;i<sz;i++)
 			{
-				const IParticle<CoordType>* const p = particles[i];
-				const CoordType minx = p->getMinX();
-				const CoordType maxx = p->getMaxX();
+				//const IParticle<CoordType>* const p = fields->particles[i];
+				const CoordType minx = fields->xMinVec[i];
+				const CoordType maxx = fields->xMaxVec[i];
 
-				const CoordType miny = p->getMinY();
-				const CoordType maxy = p->getMaxY();
+				const CoordType miny = fields->yMinVec[i];
+				const CoordType maxy = fields->yMaxVec[i];
 
-				const CoordType minz = p->getMinZ();
-				const CoordType maxz = p->getMaxZ();
+				const CoordType minz = fields->zMinVec[i];
+				const CoordType maxz = fields->zMaxVec[i];
 
 
 
@@ -305,23 +352,60 @@ public:
 						for(int ii=indexX;ii<=indexX2;ii++)
 						{
 							int cellIndex=-1;
-							const int indexParticleInCell = fields->numParticlesAtCellIncrement(ii,jj,kk,cellIndex);
+							const int indexParticleInCell = fields->numParticlesAtCell(ii,jj,kk,cellIndex);
 
-							if(indexParticleInCell<maxParticlesPerCell)
+							// if this is a plain cell (no sub-grid)
+							if(indexParticleInCell>=0)
 							{
-								// add to all intersecting cells for fast query
-								fields->setCellData(cellIndex,indexParticleInCell,i);
+
+								fields->numParticlesAtCellIncrement(cellIndex);
+
+
+								if(indexParticleInCell<maxParticlesPerCell)
+								{
+
+									// add to all intersecting cells for fast query
+									fields->setCellData(cellIndex,indexParticleInCell,i);
+								}
+								else
+								{
+									debugCtr++;
+									const int curSub = 1+*subFieldIndex;
+									*subFieldIndex = (*subFieldIndex) + 1;
+
+									// creating a grid in this cell
+									subFields->push_back(FixedGrid<CoordType>(w/2,h/2,d/2,sto));
+
+									/* changing this cell to "grid" type  */
+									fields->setCellData(cellIndex,-1,-curSub);
+
+
+									for(int extract = 0; extract<indexParticleInCell; extract++)
+									{
+										// extract previous particles
+										IParticle<CoordType>* ext = fields->particles[fields->getCellData(cellIndex,extract)];
+
+										// put to grid in cell
+										(*subFields)[curSub-1].add(ext,1);
+									}
+
+									// add current particle too
+									(*subFields)[curSub-1].add(fields->particles[i],1);
+
+								}
 							}
 							else
 							{
-								std::cout<<"Error: Grid-cell overflow. Max particle: "<<maxParticlesPerCell<<" added: "<<(indexParticleInCell+1)<<"  cell-id:"<<cellIndex<<std::endl;
+								// if this is a sub-grid instad of a plain cell
+								const int curSub = -1-indexParticleInCell;
+								(*subFields)[curSub].add(fields->particles[i],1);
 							}
 						}
 
 			}
 
 			// cell-based computation (SIMD-vectorized) in steps of 16
-			std::map<int,std::map<int,bool>> coll;
+			fields->coll.clear();
 			for(int k=0;k<d;k++)
 				for(int j=0;j<h;j++)
 					for(int i=0;i<w;i++)
@@ -329,42 +413,60 @@ public:
 						int cellIndex=-1;
 						const int n=fields->numParticlesAtCell(i,j,k,cellIndex);
 
-						// brute-force within cell, n is small so its better than brute force for N
-
-						if(n<2)
-							continue;
-						for(int pt = 0; pt<n-1; pt++)
+						// if cell is plain cell (no sub-grid)
+						if(cellIndex>=0)
 						{
-							const int idx = fields->getCellData(cellIndex,pt);
-							for(int pt2 = pt+1; pt2<n; pt2++)
-							{
-								const int idx2 = fields->getCellData(cellIndex,pt2);
 
-								if(		particles[idx]->intersectX(particles[idx2]) &&
-										particles[idx]->intersectY(particles[idx2]) &&
-										particles[idx]->intersectZ(particles[idx2])
-										)
+
+							// brute-force within cell, n is small so its better than brute force for N
+							if(n<2)
+								continue;
+
+							for(int pt = 0; pt<n-1; pt++)
+							{
+								const int idx = fields->getCellData(cellIndex,pt);
+								for(int pt2 = pt+1; pt2<n; pt2++)
 								{
-									coll[idx][idx2]=true;
+									const int idx2 = fields->getCellData(cellIndex,pt2);
+
+									if	(	intersectDim(fields->xMinVec[idx],fields->xMaxVec[idx],fields->xMinVec[idx2],fields->xMaxVec[idx2]) &&
+											intersectDim(fields->yMinVec[idx],fields->yMaxVec[idx],fields->yMinVec[idx2],fields->yMaxVec[idx2]) &&
+											intersectDim(fields->zMinVec[idx],fields->zMaxVec[idx],fields->zMinVec[idx2],fields->zMaxVec[idx2])
+										)
+									{
+										fields->coll[idx][idx2]=true;
+									}
 								}
 							}
-
-
 						}
+						else
+						{
+							// if cell is a sub-grid, order computation
+							const int curSub = -1-cellIndex;
+							const std::vector<CollisionPair<CoordType>> collisions = (*subFields)[curSub].getCollisions/*VsGridOnly*/(debugCtr);
+							for(const CollisionPair<CoordType>& c:collisions)
+							{
+								fields->coll[c.getParticle1()->getId()][c.getParticle2()->getId()]=true;
+							}
+						}
+
 					}
 
-			for(auto& c:coll)
+			for(auto& c:fields->coll)
 			{
 				for(auto& c2:c.second)
 				{
-					result.push_back(CollisionPair<CoordType>(particles[c.first],particles[c2.first]));
+					result.push_back(CollisionPair<CoordType>(fields->particles[c.first],fields->particles[c2.first]));
 				}
 			}
 			return result;
 		}
 private:
-		std::vector<IParticle<CoordType>*> particles;
+
+
 		std::shared_ptr<FixedGridFields<CoordType>> fields;
+		std::shared_ptr<std::vector<FixedGrid<CoordType>>> subFields;
+		std::shared_ptr<int> subFieldIndex;
 	};
 
 
