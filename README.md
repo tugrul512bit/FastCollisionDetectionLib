@@ -1,2 +1,2 @@
 # FastCollisionDetectionLib
-C++ fast collision detection for uniform-distributed AABB particles using adaptive grid
+C++ fast collision detection for uniform-distributed AABB particles using adaptive grid with implicit vectorization.
