@@ -5,7 +5,8 @@ C++ fast collision detection for uniform-distributed AABB particles using adapti
 - - 290x speedup when half of AABBs are 10x further than each other [0-1] and [10-11]
 - Produced collision list does not contain duplicate pairs of collisions
 - Particle data is not touched, work done only on pointers internally
-- Currently it is adaptive, but needs optimizations on memory handling.
+- Currently it is adaptive, but needs optimizations on memory handling. 
+- - On every cell-overflow, it stretches the cell to AABB of all particles and converts to a grid of 4x4x4 cells each with 4 capacity
 - Implementation of IParticle is an AABB (axis-aligned bounding box) model 
 - - In user defined particle (box as example here), methods (getMinX/Y/Z and getMaxX/Y/Z)  must return AABB corners of the underlying user-particle
 
@@ -62,7 +63,7 @@ int main()
 	FastColDetLib::FixedGrid<float> grid(	64, // number of cells on X dimension
 						64, // number of cells on Y dimension
 						64, // number of cells on Z dimension
-						35  // number of particles that each cell can store before becoming a sub-grid
+						35  // max particles per cell before cell becomes a sub-grid
 	);
 	FastColDetLib::BruteForce<float> bruteForce;
 	std::vector<FastColDetLib::CollisionPair<float>> coll3D,coll3Dbrute;
