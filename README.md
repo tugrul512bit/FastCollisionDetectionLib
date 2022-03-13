@@ -6,7 +6,7 @@ C++ fast collision detection for uniform-distributed AABB particles using adapti
 - Particle data is not touched, work done only on pointers internally
 - Currently it is not adaptive, but will be done (as simple as recreating another grid for overflowing partciles in a cell of the grid (and recursively same))
 - Implementation of IParticle is an AABB (axis-aligned bounding box) model 
-- - In user defined particle (box as example here) methods (getMinX/Y/Z and getMaxX/Y/Z)  must return AABB corners of the underlying user-particle
+- - In user defined particle (box as example here), methods (getMinX/Y/Z and getMaxX/Y/Z)  must return AABB corners of the underlying user-particle
 
 ```C++
 #include"FastCollisionDetectionLib.h"
