@@ -1,7 +1,9 @@
 # FastCollisionDetectionLib
 C++ fast collision detection for uniform-distributed AABB particles using adaptive grid with implicit vectorization.
 
-1000x speedup for single core against single core brute-force algorithm (without vectorization) for 40k particles.
+- 1000x speedup against naive brute-force algorithm for 40k particles.
+- Produced collision list does not contain duplicate pairs of collisions
+- Particle data is not touched, work done only on pointers internally
 
 ```C++
 #include"FastCollisionDetectionLib.h"
