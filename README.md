@@ -59,7 +59,11 @@ int main()
 		box[i]=Box(x1,y1,z1,x1+dx,y1+dx,z1+dx,i);
 	}
 
-	FastColDetLib::FixedGrid<float> grid;
+	FastColDetLib::FixedGrid<float> grid(	64, // number of cells on X dimension
+						64, // number of cells on Y dimension
+						64, // number of cells on Z dimension
+						35  // number of particles that each cell can store before becoming a sub-grid
+	);
 	FastColDetLib::BruteForce<float> bruteForce;
 	std::vector<FastColDetLib::CollisionPair<float>> coll3D,coll3Dbrute;
 
