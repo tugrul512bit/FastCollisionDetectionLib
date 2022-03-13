@@ -374,7 +374,7 @@ public:
 									*subFieldIndex = (*subFieldIndex) + 1;
 
 									// creating a grid in this cell
-									subFields->push_back(FixedGrid<CoordType>(w/2,h/2,d/2,sto));
+									subFields->push_back(FixedGrid<CoordType>(4,4,4,4));
 
 									/* changing this cell to "grid" type  */
 									fields->setCellData(cellIndex,-1,-curSub);
@@ -414,7 +414,7 @@ public:
 						const int n=fields->numParticlesAtCell(i,j,k,cellIndex);
 
 						// if cell is plain cell (no sub-grid)
-						if(cellIndex>=0)
+						if(n>=0)
 						{
 
 
@@ -442,7 +442,7 @@ public:
 						else
 						{
 							// if cell is a sub-grid, order computation
-							const int curSub = -1-cellIndex;
+							const int curSub = -1-n;
 							const std::vector<CollisionPair<CoordType>> collisions = (*subFields)[curSub].getCollisions/*VsGridOnly*/(debugCtr);
 							for(const CollisionPair<CoordType>& c:collisions)
 							{
