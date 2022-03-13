@@ -81,6 +81,7 @@ namespace FastColDetLib
 		{
 			p1=p1Prm;
 			p2=p2Prm;
+
 		}
 
 		IParticle<CoordType>* getParticle1() const
@@ -176,7 +177,7 @@ namespace FastColDetLib
 		std::vector<CoordType> yMaxVec;
 		std::vector<CoordType> zMinVec;
 		std::vector<CoordType> zMaxVec;
-		std::map<int,std::map<int,bool>> coll;
+		std::map<IParticle<CoordType>*,std::map<IParticle<CoordType>*,bool>> coll;
 
 		// first integer in cell = number of particles. -1: another grid (adaptiveness)
 		std::vector<int> grid;
@@ -373,6 +374,7 @@ public:
 									const int curSub = 1+*subFieldIndex;
 									*subFieldIndex = (*subFieldIndex) + 1;
 
+									// todo: convert particle id to current grid's array index instead of parent grid's array index
 									// creating a grid in this cell
 									subFields->push_back(FixedGrid<CoordType>(4,4,4,4));
 
@@ -386,6 +388,7 @@ public:
 										IParticle<CoordType>* ext = fields->particles[fields->getCellData(cellIndex,extract)];
 
 										// put to grid in cell
+
 										(*subFields)[curSub-1].add(ext,1);
 									}
 
@@ -434,7 +437,7 @@ public:
 											intersectDim(fields->zMinVec[idx],fields->zMaxVec[idx],fields->zMinVec[idx2],fields->zMaxVec[idx2])
 										)
 									{
-										fields->coll[idx][idx2]=true;
+										fields->coll[fields->particles[idx]][fields->particles[idx2]]=true;
 									}
 								}
 							}
@@ -444,10 +447,13 @@ public:
 							// if cell is a sub-grid, order computation
 							const int curSub = -1-n;
 							const std::vector<CollisionPair<CoordType>> collisions = (*subFields)[curSub].getCollisions/*VsGridOnly*/(debugCtr);
+
 							for(const CollisionPair<CoordType>& c:collisions)
 							{
-								fields->coll[c.getParticle1()->getId()][c.getParticle2()->getId()]=true;
+
+								fields->coll[c.getParticle1()/*->getId()*/][c.getParticle2()/*->getId()*/]=true;
 							}
+
 						}
 
 					}
@@ -456,9 +462,11 @@ public:
 			{
 				for(auto& c2:c.second)
 				{
-					result.push_back(CollisionPair<CoordType>(fields->particles[c.first],fields->particles[c2.first]));
+
+					result.push_back(CollisionPair<CoordType>(/*fields->particles[*/c.first/*]*/,/*fields->particles[*/c2.first/*]*/));
 				}
 			}
+
 			return result;
 		}
 private:
@@ -502,6 +510,7 @@ public:
 
 					if( particles[i]->intersectX(particles[j]) && particles[i]->intersectY(particles[j]) && particles[i]->intersectZ(particles[j]))
 					{
+
 						collisionPairs.push_back(CollisionPair<CoordType>(particles[i],particles[j]));
 					}
 				}
