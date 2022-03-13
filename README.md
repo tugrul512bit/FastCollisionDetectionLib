@@ -57,6 +57,9 @@ int main()
 	FastColDetLib::BruteForce<float> bruteForce;
 	std::vector<FastColDetLib::CollisionPair<float>> coll3D,coll3Dbrute;
 
+	// adding pointers of all elements at once 
+	// can be used multiple times, even from non-contiguous regions,
+	// internal work uses pointers only (Iparticle<type>)
 	grid.add(&box[0],n);
 	bruteForce.add(&box[0],n);
 
