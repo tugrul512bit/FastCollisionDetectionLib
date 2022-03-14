@@ -223,8 +223,8 @@ public:
 		}
 
 
-		// debugCtr: assigns number of total (nested)grid objects created during computations
-		std::vector<CollisionPair<CoordType>> getCollisions(int& debugCtr=0)
+		// returns collision pairs, ordered
+		std::vector<CollisionPair<CoordType>> getCollisions()
 		{
 			subFields->clear();
 			*subFieldIndex=0;
@@ -370,7 +370,7 @@ public:
 								}
 								else
 								{
-									debugCtr++;
+									
 									const int curSub = 1+*subFieldIndex;
 									*subFieldIndex = (*subFieldIndex) + 1;
 
@@ -446,7 +446,7 @@ public:
 						{
 							// if cell is a sub-grid, order computation
 							const int curSub = -1-n;
-							const std::vector<CollisionPair<CoordType>> collisions = (*subFields)[curSub].getCollisions/*VsGridOnly*/(debugCtr);
+							const std::vector<CollisionPair<CoordType>> collisions = (*subFields)[curSub].getCollisions();
 
 							for(const CollisionPair<CoordType>& c:collisions)
 							{
