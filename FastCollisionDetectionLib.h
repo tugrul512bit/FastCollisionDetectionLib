@@ -106,9 +106,9 @@ namespace FastColDetLib
 	class FixedGridFields
 	{
 	public:
-		FixedGridFields(const int w=64, const int h=64, const int d=64, const int s=63):width(w),height(h),depth(d),storage(s),stride(w*h*d)
+		FixedGridFields(const int w=64, const int h=64, const int d=64, const int s=63):width(w),height(h),depth(d),storage(s),stride(storage+1)
 		{
-			grid.resize(4096 + width*height*depth*(storage+1));
+			grid.resize(width*height*depth*(storage+1));
 		}
 
 		inline
@@ -118,14 +118,14 @@ namespace FastColDetLib
 				for(int j=0;j<height;j++)
 					for(int i=0;i<width;i++)
 					{
-						grid[i+j*width+k*width*height]=0; // 0: no particle, -1: a grid
+						grid[(i+j*width+k*width*height)*stride]=0; // 0: no particle, -1: a grid
 					}
 		}
 
 		inline
 		const int numParticlesAtCell(const int indexX, const int indexY, const int indexZ) const noexcept
 		{
-			return grid[indexX + indexY*width + indexZ*width*height];
+			return grid[(indexX + indexY*width + indexZ*width*height)*stride];
 		}
 
 
@@ -133,7 +133,7 @@ namespace FastColDetLib
 		inline
 		const int numParticlesAtCell(const int indexX, const int indexY, const int indexZ, int& computedCellIndex) const noexcept
 		{
-			computedCellIndex=indexX + indexY*width + indexZ*width*height;
+			computedCellIndex=(indexX + indexY*width + indexZ*width*height)*stride;
 			return grid[computedCellIndex];
 		}
 
@@ -158,13 +158,13 @@ namespace FastColDetLib
 		inline
 		void setCellData(const int cellId, const int laneId, const int data) noexcept
 		{
-			grid[cellId + (laneId+1)*stride] = data; // +1: first item is number of particles or indicator of another grid (adaptiveness)
+			grid[cellId + (laneId+1)] = data; // +1: first item is number of particles or indicator of another grid (adaptiveness)
 		}
 
 		inline
 		const int getCellData(const int cellId, const int laneId) const noexcept
 		{
-			return grid[cellId + (laneId+1)*stride]; // +1: first item is number of particles or indicator of another grid (adaptiveness)
+			return grid[cellId + (laneId+1)]; // +1: first item is number of particles or indicator of another grid (adaptiveness)
 		}
 
 
@@ -370,13 +370,13 @@ public:
 								}
 								else
 								{
-									
+
 									const int curSub = 1+*subFieldIndex;
 									*subFieldIndex = (*subFieldIndex) + 1;
 
 									// todo: convert particle id to current grid's array index instead of parent grid's array index
 									// creating a grid in this cell
-									subFields->push_back(AdaptiveGrid<CoordType>(4,4,4,4));
+									subFields->push_back(AdaptiveGrid<CoordType>(4,4,4,sto+2));
 
 									/* changing this cell to "grid" type  */
 									fields->setCellData(cellIndex,-1,-curSub);
