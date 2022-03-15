@@ -1,8 +1,9 @@
 # FastCollisionDetectionLib
 C++ fast collision detection for uniform-distributed AABB particles using adaptive grid with implicit vectorization.
 
-- 10 million dynamic particles AABB collision check per second against static grid
+- 10 million dynamic particles AABB collision check per second against static grid of 8000 particles
 - 1000x speedup against naive brute-force algorithm for 40k particles (static vs static), with uniform-distribution in range [0 - 1]).
+- - teapot-in-stadium problem is partially solved by "adaptive" grid:
 - - 290x speedup when half of AABBs are 10x further than each other [0-1] and [10-11]
 - - 230x speedup when half of AABBs are 10x far and a single AABB 100x far: [0-1] x N/2, [10-11] x N/2, [100-101] x1 
 - Produced collision list does not contain duplicate pairs of collisions
@@ -17,6 +18,7 @@ Working demo (requires linking pthread for header and gomp/fopenmp for this demo
 ```C++
 #include"FastCollisionDetectionLib.h"
 
+// user-object, with IParticle<coordinate_type> interface for querying AABB within the API
 class Box: public FastColDetLib::IParticle<float>
 {
 public:
@@ -73,6 +75,7 @@ int main()
 			box[i]=Box(x1,y1,z1,x1+dx2+dx*gen.generate1Float(),y1+dx2+dx*gen.generate1Float(),z1+dx2+dx*gen.generate1Float(),i);
 		}
 
+		// thread-pool releases itself once it is out of scope
 		FastColDetLib::ThreadPool<float> thr;
 		FastColDetLib::AdaptiveGrid<float> grid(thr,-1,-1,-1,d+1,d+1,d+1);
 		FastColDetLib::BruteForce<float> bruteForce;
