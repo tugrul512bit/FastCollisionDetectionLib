@@ -11,10 +11,11 @@ C++ fast collision detection for uniform-distributed AABB particles using adapti
 - Implementation of IParticle is an AABB (axis-aligned bounding box) model 
 - - In user defined particle (box as example here), methods (getMinX/Y/Z and getMaxX/Y/Z)  must return AABB corners of the underlying user-particle
 
+Working demo (requires linking pthread for header and gomp/fopenmp for this demo):
+
 ```C++
 #include"FastCollisionDetectionLib.h"
 
-// any shape you like, but implements IParticle<float/double/etc> for the collision detection
 class Box: public FastColDetLib::IParticle<float>
 {
 public:
@@ -46,45 +47,149 @@ private:
 	size_t id;
 };
 
+#include<iostream>
+#include<omp.h>
+#include"Generator.h"
 int main()
 {
-	const int n=40960;
-	Box box[n];
-	for(int i=0;i<n;i++)
+
+	oofrng::Generator<64> gen;
+
 	{
-		auto x1 = /* generate your box coordinate */;
-		auto y1 = /* generate your box coordinate */;
-		auto z1 = /* generate your box coordinate */;
+		// c^3 particles
+		const int d = 20;
+		const int n=d*d*d;
+		std::cout<<"n="<<n<<std::endl;
+		std::vector<Box> box(n);
+		for(int i=0;i<n;i++)
+		{
+			auto x1 = gen.generate1Float()*d;
+			auto y1 = gen.generate1Float()*d;
+			auto z1 = gen.generate1Float()*d;
 
-		// some computation to keep density same for different values of n
-		float dx = 0.1f/std::pow(n,1.0f/3);
-		box[i]=Box(x1,y1,z1,x1+dx,y1+dx,z1+dx,i);
+			float dx = 0.05f;
+			float dx2 = 0.05f;
+			box[i]=Box(x1,y1,z1,x1+dx2+dx*gen.generate1Float(),y1+dx2+dx*gen.generate1Float(),z1+dx2+dx*gen.generate1Float(),i);
+		}
+
+		FastColDetLib::ThreadPool<float> thr;
+		FastColDetLib::AdaptiveGrid<float> grid(thr,-1,-1,-1,d+1,d+1,d+1);
+		FastColDetLib::BruteForce<float> bruteForce;
+		std::vector<FastColDetLib::CollisionPair<float>> coll3D,coll3Dbrute;
+
+
+		std::cout<<"add"<<std::endl;
+		bruteForce.add(&box[0],n);
+		std::cout<<"compute"<<std::endl;
+		bool bfor = true;
+
+
+		for(int k=0;k<40;k++)
+		{
+			size_t nano1,nano2;
+
+			{
+				{
+					FastColDetLib::Bench bench(&nano1);
+					{
+						FastColDetLib::Bench bench(&nano1);
+						grid.clear();
+					}
+					std::cout<<"grid-static-object-clear: "<<nano1/1000000000.0<<" s "<<std::endl;
+					{
+						FastColDetLib::Bench bench(&nano1);
+						grid.add(box.data(),n);
+					}
+					std::cout<<"grid-static-object-add ("<<n<<" particles AABB): "<<nano1/1000000000.0<<" s "<<std::endl;
+					{
+						FastColDetLib::Bench bench(&nano1);
+						coll3D = grid.getCollisions();
+					}
+					std::cout<<"grid-static-object-compute: "<<nano1/1000000000.0<<" s "<<coll3D.size()<<std::endl;
+				}
+				std::cout<<"grid-static-total: "<<nano1/1000000000.0<<" s "<<coll3D.size()<<std::endl;
+				std::vector<float> rand(1000000*3);
+				gen.generate(rand.data(),1000000*3);
+				{
+					std::mutex mut;
+					std::vector<FastColDetLib::IParticle<float>*> res;
+					{
+						FastColDetLib::Bench bench(&nano1);
+						#pragma omp parallel for
+						for(int j=0;j<100;j++)
+						{
+							std::vector<FastColDetLib::IParticle<float>*> resTmp;
+							for(int i=0;i<1000;i++)
+							{
+								auto x = rand[i*3]*d;
+								auto y = rand[i*3+1]*d;
+								auto z = rand[i*3+2]*d;
+								auto item = Box(x,y,z,x+0.25,y+0.25,z+0.25);
+								auto collisions = grid.getDynamicCollisionListFor(&item);
+								std::copy(collisions.begin(),collisions.end(),std::back_inserter(resTmp));
+							}
+							std::lock_guard<std::mutex> lg(mut);
+							std::copy(resTmp.begin(),resTmp.end(),std::back_inserter(res));
+						}
+
+					}
+					std::cout<<"grid-compute-dynamic (100k particles AABB): "<<nano1/1000000000.0<<" s "<<res.size()<<std::endl;
+				}
+
+			}
+
+
+			if(bfor)
+			{
+				FastColDetLib::Bench bench(&nano2);
+				coll3Dbrute = bruteForce.getCollisions();
+			}
+			if(bfor)
+				std::cout<<"Brute-force ("<<n<<" particles AABB): "<<nano2/1000000000.0<<" s "<<coll3Dbrute.size()<<std::endl;
+			std::cout<<"------------------------------------------------------------------------------------"<<std::endl;
+		}
+
+
+		if(bfor)
+		{
+			if(coll3D.size() != coll3Dbrute.size())
+			{
+				std::cout<<"ERROR: not equal sizes of collision lists"<<std::endl;
+				std::cout<<coll3D.size()<<" vs "<< coll3Dbrute.size()<<std::endl;
+				const int sz = std::min(coll3D.size(),coll3Dbrute.size());
+				const int sz2 = sz<10?sz:10;
+				for(int i=0;i<sz2;i++)
+				{
+					if((coll3D[i].getParticle1()->getId()!=coll3Dbrute[i].getParticle1()->getId()) &&
+							(coll3D[i].getParticle2()->getId()!=coll3Dbrute[i].getParticle2()->getId())
+							)
+					{
+						std::cout<<"ERRRROOOR!"<<std::endl;
+						std::cout<<coll3D[i].getParticle1()->getId()<<"<-->"<<coll3D[i].getParticle2()->getId()<<"        "<<coll3Dbrute[i].getParticle1()->getId()<<"<-->"<<coll3Dbrute[i].getParticle2()->getId()<<std::endl;
+					}
+				}
+			}
+			else
+			{
+				const size_t sz = coll3D.size();
+				for(size_t i=0;i<sz;i++)
+				{
+
+					if((coll3D[i].getParticle1()->getId()!=coll3Dbrute[i].getParticle1()->getId()) &&
+							(coll3D[i].getParticle2()->getId()!=coll3Dbrute[i].getParticle2()->getId())
+							)
+					{
+						std::cout<<"ERRRROOOR!"<<std::endl;
+						std::cout<<coll3D[i].getParticle1()->getId()<<"<-->"<<coll3D[i].getParticle2()->getId()<<"        "<<coll3Dbrute[i].getParticle1()->getId()<<"<-->"<<coll3Dbrute[i].getParticle2()->getId()<<std::endl;
+					}
+				}
+			}
+		}
+		std::cout<<"--"<<std::endl;
+
+
 	}
-
-	FastColDetLib::AdaptiveGrid<float> grid(	64, // number of cells on X dimension
-						64, // number of cells on Y dimension
-						64, // number of cells on Z dimension
-						35  // max particles per cell before cell becomes a sub-grid
-	);
-	FastColDetLib::BruteForce<float> bruteForce;
-	std::vector<FastColDetLib::CollisionPair<float>> coll3D,coll3Dbrute;
-
-	// adding pointers of all elements at once 
-	// can be used multiple times, even from non-contiguous regions,
-	// internal work uses pointers only (Iparticle<type>)
-	grid.add(&box[0],n);
-	bruteForce.add(&box[0],n);
-
-	coll3D = grid.getCollisions();            // 14.5 milliseconds (fx8150 at 2.1GHz)
-	coll3Dbrute = bruteForce.getCollisions(); // 15.3 seconds (fx8150 at 2.1GHz)
-
-	for(auto& pair:coll3D)
-	{
-		int particleId1 = pair.getParticle1()->getId();
-		int particleId2 = pair.getParticle2()->getId();
-		// compute something using indices of particles that are colliding
-	}
-
 	return 0;
 }
+
 ```
