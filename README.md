@@ -1,7 +1,8 @@
 # FastCollisionDetectionLib
 C++ fast collision detection for uniform-distributed AABB particles using adaptive grid with implicit vectorization.
 
-- 1000x speedup against naive brute-force algorithm for 40k particles, with uniform-distribution in range [0 - 1]).
+- 10 million dynamic particles AABB collision check per second against static grid
+- 1000x speedup against naive brute-force algorithm for 40k particles (static vs static), with uniform-distribution in range [0 - 1]).
 - - 290x speedup when half of AABBs are 10x further than each other [0-1] and [10-11]
 - - 230x speedup when half of AABBs are 10x far and a single AABB 100x far: [0-1] x N/2, [10-11] x N/2, [100-101] x1 
 - Produced collision list does not contain duplicate pairs of collisions
