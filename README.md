@@ -194,3 +194,73 @@ int main()
 }
 
 ```
+
+output for FX8150 at 2.1GHz:
+
+```
+n=8000
+add
+compute
+grid-static-object-clear: 6.4614e-05 s 
+grid-static-object-add (8000 particles AABB): 0.00656692 s 
+grid-static-object-compute: 0.00195991 s 16
+grid-static-total: 0.00866529 s 16
+grid-compute-dynamic (100k particles AABB): 0.0137853 s 3600
+Brute-force (8000 particles AABB): 0.541069 s 16
+------------------------------------------------------------------------------------
+grid-static-object-clear: 0.00143487 s 
+grid-static-object-add (8000 particles AABB): 0.00523593 s 
+grid-static-object-compute: 0.00182263 s 16
+grid-static-total: 0.00853913 s 16
+grid-compute-dynamic (100k particles AABB): 0.00835323 s 4300
+Brute-force (8000 particles AABB): 0.541662 s 16
+------------------------------------------------------------------------------------
+grid-static-object-clear: 0.00161331 s 
+grid-static-object-add (8000 particles AABB): 0.00521717 s 
+grid-static-object-compute: 0.00180544 s 16
+grid-static-total: 0.0086723 s 16
+grid-compute-dynamic (100k particles AABB): 0.00864333 s 3200
+Brute-force (8000 particles AABB): 0.54128 s 16
+------------------------------------------------------------------------------------
+grid-static-object-clear: 0.00151348 s 
+grid-static-object-add (8000 particles AABB): 0.00524639 s 
+grid-static-object-compute: 0.00180144 s 16
+grid-static-total: 0.00860804 s 16
+grid-compute-dynamic (100k particles AABB): 0.010513 s 3200
+Brute-force (8000 particles AABB): 0.541246 s 16
+------------------------------------------------------------------------------------
+grid-static-object-clear: 0.00160501 s 
+grid-static-object-add (8000 particles AABB): 0.00521408 s 
+grid-static-object-compute: 0.00176137 s 16
+grid-static-total: 0.00862669 s 16
+grid-compute-dynamic (100k particles AABB): 0.0120599 s 3000
+Brute-force (8000 particles AABB): 0.54391 s 16
+------------------------------------------------------------------------------------
+grid-static-object-clear: 0.00174257 s 
+grid-static-object-add (8000 particles AABB): 0.00548767 s 
+grid-static-object-compute: 0.00182023 s 16
+grid-static-total: 0.00909577 s 16
+grid-compute-dynamic (100k particles AABB): 0.0083235 s 3500
+Brute-force (8000 particles AABB): 0.54521 s 16
+------------------------------------------------------------------------------------
+
+```
+
+This is ~8500x performance for checking a particle collision against a grid of static objects and  ~50x performance for static-static collision check (or dynamic-dynamic).
+
+More particles:
+
+```
+n=64000
+add
+compute
+grid-static-object-clear: 1.3058e-05 s 
+grid-static-object-add (64000 particles AABB): 0.0347275 s 
+grid-static-object-compute: 0.0106954 s 114
+grid-static-total: 0.0455527 s 114
+grid-compute-dynamic (100k particles AABB): 0.0154652 s 3700
+Brute-force (64000 particles AABB): 35.473 s 114
+
+```
+
+777x performance for static vs static collision checking, more than 2000x performance for static vs dynamic.
