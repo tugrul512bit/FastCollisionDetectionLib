@@ -59,7 +59,7 @@ int main()
 	oofrng::Generator<64> gen;
 
 	{
-		// c^3 particles
+		// d^3 number of particles
 		const int d = 20;
 		const int n=d*d*d;
 		std::cout<<"n="<<n<<std::endl;
