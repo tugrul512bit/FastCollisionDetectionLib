@@ -240,8 +240,8 @@ int main()
 	{
 		FastColDetLib::Bench bench(&nano);
 
-		// uniform grid for 64x64x64 cells each with 100 objects max
-		// mapped to (0,0,0) - (50,50,50) cube
+		// uniform grid for 32x32x32 cells each with 30 objects max
+		// mapped to (0,0,0) - (450,450,450) cube
 		Grid<cotype,32,30> grid(0,450);
 
 		// add AABBs to grid
