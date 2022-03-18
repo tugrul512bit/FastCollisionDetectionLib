@@ -1,0 +1,337 @@
+#include"FastCollisionDetectionLib.h"
+
+#include<iostream>
+
+template<typename CoordType>
+struct Vector3D
+{
+	CoordType x,y,z;
+	Vector3D<CoordType> crossProduct(Vector3D<CoordType> vec)
+	{
+		Vector3D<CoordType> res;
+		res.x = y*vec.z - z*vec.y;
+		res.y = z*vec.x - x*vec.z;
+		res.z = x*vec.y - y*vec.x;
+		return res;
+	}
+
+	Vector3D<CoordType> operator - (Vector3D<CoordType> vec)
+	{
+		Vector3D<CoordType> result;
+		result.x = x-vec.x;
+		result.y = y-vec.y;
+		result.z = z-vec.z;
+		return result;
+	}
+
+	Vector3D<CoordType> operator + (Vector3D<CoordType> vec)
+	{
+		Vector3D<CoordType> result;
+		result.x = x+vec.x;
+		result.y = y+vec.y;
+		result.z = z+vec.z;
+		return result;
+	}
+
+	Vector3D<CoordType> operator * (CoordType v)
+	{
+		Vector3D<CoordType> result;
+		result.x = x*v;
+		result.y = y*v;
+		result.z = z*v;
+		return result;
+	}
+
+	CoordType abs()
+	{
+		return std::sqrt(x*x+y*y+z*z);
+	}
+
+};
+
+
+template<typename CoordType>
+struct PointCloud
+{
+	Vector3D<CoordType> point[125];
+	PointCloud(CoordType x, CoordType y, CoordType z)
+	{
+		for(int i=0;i<125;i++)
+		{
+			point[i].x=x+i%5-2.5f;
+			point[i].y=y+(i/5)%5-2.5f;
+			point[i].z=z+i/25-2.5f;
+		}
+	}
+};
+
+template<typename CoordType>
+bool pointCloudIntersection(PointCloud<CoordType>& cl1, PointCloud<CoordType>& cl2)
+{
+	for(Vector3D<CoordType>& p:cl1.point)
+	{
+		for(Vector3D<CoordType>& p2:cl2.point)
+		{
+			if((p-p2).abs()<1.0f)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+template<typename CoordType>
+bool intersectDim(const CoordType minx, const CoordType maxx, const CoordType minx2, const CoordType maxx2)
+{
+	return !((maxx < minx2) || (maxx2 < minx));
+}
+#include"Generator.h"
+
+template<typename CoordType>
+struct AABBofPointCloud: public FastColDetLib::IParticle<CoordType>
+{
+	AABBofPointCloud(int idPrm, PointCloud<CoordType> * pCloudPrm)
+	{
+		id=idPrm;
+		pCloud = pCloudPrm;
+		xmin=pCloud->point[0].x;
+		ymin=pCloud->point[0].y;
+		zmin=pCloud->point[0].z;
+		xmax=pCloud->point[0].x;
+		ymax=pCloud->point[0].y;
+		zmax=pCloud->point[0].z;
+		for(int i=0;i<125;i++)
+		{
+			if(xmin>pCloud->point[i].x)
+				xmin=pCloud->point[i].x;
+			if(ymin>pCloud->point[i].y)
+				ymin=pCloud->point[i].y;
+			if(zmin>pCloud->point[i].z)
+				zmin=pCloud->point[i].z;
+			if(xmax<pCloud->point[i].x)
+				xmax=pCloud->point[i].x;
+			if(ymax<pCloud->point[i].y)
+				ymax=pCloud->point[i].y;
+			if(zmax<pCloud->point[i].z)
+				zmax=pCloud->point[i].z;
+		}
+	}
+	int id;
+	PointCloud<CoordType>* pCloud;
+	CoordType xmin;
+	CoordType ymin;
+	CoordType zmin;
+	CoordType xmax;
+	CoordType ymax;
+	CoordType zmax;
+	const CoordType getMaxX()const {return xmax;}
+	const CoordType getMaxY()const {return ymax;}
+	const CoordType getMaxZ()const {return zmax;}
+	const CoordType getMinX()const {return xmin;}
+	const CoordType getMinY()const {return ymin;}
+	const CoordType getMinZ()const {return zmin;}
+	const int getId()const {return id;}
+};
+
+
+template<typename CoordType, int Size, int ObjectsPerCell>
+class Grid
+{
+public:
+	Grid(CoordType minCor, CoordType maxCor)
+	{
+		id=0;
+		mincorner=minCor;
+		maxcorner=maxCor;
+		cellData.resize(Size*Size*Size*(ObjectsPerCell+1));
+		for(int i=0;i<cellData.size();i++)
+			cellData[i]=0;
+	}
+
+	template<typename Func>
+	void forEachCellColliding(AABBofPointCloud<CoordType>* aabb, const Func& func)
+	{
+		// calculate cell size (equal for all dimensions for now)
+		const CoordType step = (maxcorner - mincorner)/Size;
+
+		// calculate overlapping region's cell indices
+		const int mincornerstartx = std::floor((aabb->xmin - mincorner) / step);
+		const int maxcornerendx = std::floor((aabb->xmax - mincorner) / step);
+		const int mincornerstarty = std::floor((aabb->ymin - mincorner) / step);
+		const int maxcornerendy = std::floor((aabb->ymax - mincorner) / step);
+		const int mincornerstartz = std::floor((aabb->zmin - mincorner) / step);
+		const int maxcornerendz = std::floor((aabb->zmax - mincorner) / step);
+		for(int i=mincornerstartz;i<=maxcornerendz;i++)
+			for(int j=mincornerstarty;j<=maxcornerendy;j++)
+				for(int k=mincornerstartx;k<=maxcornerendx;k++)
+		{
+					if(i<0 || i>=Size || j<0 || j>=Size || k<0 || k>=Size)
+						continue;
+					func(k,j,i,aabb);
+		}
+	}
+
+	void addObject(AABBofPointCloud<CoordType>* aabb)
+	{
+		forEachCellColliding(aabb, [&](int k, int j, int i, AABBofPointCloud<CoordType>* aabb){
+			const int collidingCellIndex = (k+j*Size+i*Size*Size)*(ObjectsPerCell+1);
+			const int lastUsedIndex = cellData[collidingCellIndex]++;
+			cellData[collidingCellIndex+lastUsedIndex+1]=id;
+			idMapping[id++]=aabb;
+		});
+	}
+
+	std::vector<AABBofPointCloud<CoordType>*> checkCollisionsWithSingleAABB(AABBofPointCloud<CoordType>* aabb)
+	{
+		std::vector<AABBofPointCloud<CoordType>*> result;
+		forEachCellColliding(aabb, [&](int k, int j, int i, AABBofPointCloud<CoordType>* aabb){
+			const int collidingCellIndex = (k+j*Size+i*Size*Size)*(ObjectsPerCell+1);
+			const int numObjectsInCell = cellData[collidingCellIndex];
+			for(int p=0;p<numObjectsInCell;p++)
+			{
+				const int idObj = cellData[collidingCellIndex+1+p];
+				AABBofPointCloud<CoordType>* aabbPtr = idMapping[idObj];
+				// evade self-collision and duplicated collisions
+				if( aabb->id < aabbPtr->id)
+					if(intersectDim(aabb->xmin, aabb->xmax, aabbPtr->xmin, aabbPtr->xmax))
+						if(intersectDim(aabb->ymin, aabb->ymax, aabbPtr->ymin, aabbPtr->ymax))
+							if(intersectDim(aabb->zmin, aabb->zmax, aabbPtr->zmin, aabbPtr->zmax))
+
+				{
+							result.push_back(aabbPtr);
+				}
+			}
+		});
+		return result;
+	}
+
+	std::map<int,std::map<int,bool>>  checkCollisionAllPairs()
+	{
+		std::map<int,std::map<int,bool>> collisionMatrix;
+		for(int k=0;k<Size;k++)
+			for(int j=0;j<Size;j++)
+				for(int i=0;i<Size;i++)
+				{
+					const int cellIndex = (i+j*Size+k*Size*Size)*(ObjectsPerCell+1);
+					const int nAABB = cellData[cellIndex];
+					// no check if only 1 or less AABB found
+					if(nAABB<2)
+						continue;
+
+					// evading duplicates
+					for(int o1 = 0; o1<nAABB-1; o1++)
+					{
+						for(int o2 = o1+1; o2<nAABB; o2++)
+						{
+							AABBofPointCloud<CoordType>* aabbPtr1 = idMapping[cellData[cellIndex+1+o1]];
+							AABBofPointCloud<CoordType>* aabbPtr2 = idMapping[cellData[cellIndex+1+o2]];
+							if( aabbPtr1->id < aabbPtr2->id)
+								if(intersectDim(aabbPtr1->xmin, aabbPtr1->xmax, aabbPtr2->xmin, aabbPtr2->xmax))
+									if(intersectDim(aabbPtr1->ymin, aabbPtr1->ymax, aabbPtr2->ymin, aabbPtr2->ymax))
+										if(intersectDim(aabbPtr1->zmin, aabbPtr1->zmax, aabbPtr2->zmin, aabbPtr2->zmax))
+
+							{
+										collisionMatrix[aabbPtr1->id][aabbPtr2->id]=true;
+
+							}
+						}
+					}
+				}
+		return collisionMatrix;
+	}
+
+private:
+	int id;
+	CoordType mincorner,maxcorner;
+	std::map<int,AABBofPointCloud<CoordType>*> idMapping;
+	std::vector<int> cellData;
+};
+int main()
+{
+
+	using cotype = float;
+	PointCloud<cotype> ico1(0,0,0);
+	// heating the CPU for benchmarking
+
+	for(int i=0;i<10000;i++)
+	{
+		PointCloud<cotype> ico2(0,0.1f,i*0.1f);
+		pointCloudIntersection(ico1,ico2);
+	}
+
+	const int N = 10003;
+	std::vector<PointCloud<cotype>> objects;
+	oofrng::Generator<64> gen;
+	for(int i=0;i<N-3;i++)
+	{
+		objects.push_back(PointCloud<cotype>(gen.generate1Float()*450,gen.generate1Float()*450,gen.generate1Float()*450));
+	}
+
+	// the teapot in stadium problem
+	objects.push_back(PointCloud<cotype>(10000,10000,10000));
+	objects.push_back(PointCloud<cotype>(10001,10001,10001));
+	objects.push_back(PointCloud<cotype>(10002,10002,10002));
+
+
+	std::vector<AABBofPointCloud<cotype>> AABBs;
+	for(int i=0;i<N;i++)
+	{
+		AABBs.push_back(AABBofPointCloud<cotype>(i,&objects[i]));
+	}
+
+
+	// benchmark begin
+	for(int j=0;j<5;j++)
+	{
+		size_t nano;
+
+		std::map<int,std::map<int,bool>> collisionMatrix;
+		{
+			FastColDetLib::Bench bench(&nano);
+
+			// uniform grid for 16x16x16 cells each with 30 objects max
+			// mapped to (0,0,0) - (10005,10005,10005) cube
+			// due to the teapot-in-stadium problem, has to have a bigger mapping
+			 Grid<cotype,16,30> grid(0,10005);
+
+			// add AABBs to grid
+			for(int i=0;i<N;i++)
+			{
+				grid.addObject(&AABBs[i]);
+			}
+
+			std::mutex mut;
+
+			#pragma omp parallel for
+			for(int i=0;i<N;i++)
+			{
+				 std::vector<AABBofPointCloud<cotype>*> result = grid.checkCollisionsWithSingleAABB(&AABBs[i]);
+					for(auto c:result)
+					{
+						if(pointCloudIntersection(*c->pCloud,*AABBs[i].pCloud))
+						{
+							std::lock_guard<std::mutex> lg(mut);
+							collisionMatrix[c->id][AABBs[i].id]=true;
+							collisionMatrix[AABBs[i].id][c->id]=true;
+						}
+					}
+			}
+
+
+		}
+		std::cout<<N<<" vs "<<N<<" point-clouds collision checking by uniform grid= "<<nano<<" nanoseconds"<<std::endl;
+		int total = 0;
+		for(auto c:collisionMatrix)
+		{
+			for(auto c2:c.second)
+			{
+				if(c2.second)
+				total++;
+			}
+		}
+		std::cout<<total<<" total collisions (half as many for pairs)"<<std::endl;
+	}
+	return 0;
+
+}
