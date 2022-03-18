@@ -283,17 +283,33 @@ namespace FastColDetLib
 		std::condition_variable c;
 	};
 
-	class ThreadPoolDestructor
+
+	template<typename CoordType>
+	class ThreadPoolFields
 	{
 	public:
-		ThreadPoolDestructor(std::function<void(void)>  dd)
+		ThreadPoolFields(){ctr=0;}
+		int ctr;
+		std::vector<std::thread> worker;
+		std::mutex mut;
+		std::vector<int> msg;
+		std::vector<std::shared_ptr<SyncQueue<Cmd<CoordType>>>> q;
+		~ThreadPoolFields()
 		{
-			destroyer = dd;
-		}
-		std::function<void(void)> destroyer;
-		~ThreadPoolDestructor()
-		{
-			destroyer();
+			for(unsigned int i=0;i<worker.size();i++)
+			{
+				std::lock_guard<std::mutex> lg(mut);
+				msg[i]=0;
+				Cmd<CoordType> cmd;
+				cmd.grid=nullptr;
+				q[i]->push2(cmd);
+			}
+
+			for(unsigned int i=0;i<worker.size();i++)
+			{
+
+				worker[i].join();
+			}
 		}
 	};
 
@@ -301,18 +317,15 @@ namespace FastColDetLib
 	class ThreadPool
 	{
 	public:
-		ThreadPool():ctr(std::make_shared<int>())
+		ThreadPool()
 		{
-			worker=std::make_shared<std::vector<std::thread>>();
-			mut=std::make_shared<std::mutex>();
-			msg=std::make_shared<std::vector<int>>();
-			q=std::make_shared<std::vector<std::shared_ptr<SyncQueue<Cmd<CoordType>>>>>();
-			destro=std::make_shared<ThreadPoolDestructor>([&,this](){this->stop();});
+			fields=std::make_shared<ThreadPoolFields<CoordType>>();
+
 			for(int i=0;i<7;i++)
 			{
-				q->push_back(std::make_shared<SyncQueue<Cmd<CoordType>>>());
-				msg->push_back(1);
-				worker->push_back(std::thread(
+				fields->q.push_back(std::make_shared<SyncQueue<Cmd<CoordType>>>());
+				fields->msg.push_back(1);
+				fields->worker.push_back(std::thread(
 						[&,i]()
 						{
 							bool work = true;
@@ -320,11 +333,11 @@ namespace FastColDetLib
 							{
 								{
 									{
-										std::lock_guard<std::mutex> lg(*mut);
-										work=((*msg)[i]>0);
+										std::lock_guard<std::mutex> lg(fields->mut);
+										work=(fields->msg[i]>0);
 									}
 
-									Cmd<CoordType> cmd = (*q)[i]->pop();
+									Cmd<CoordType> cmd = fields->q[i]->pop();
 									if(cmd.grid==nullptr)
 										break;
 									auto collisions = cmd.grid->getCollisions();
@@ -348,33 +361,13 @@ namespace FastColDetLib
 
 		void compute(Cmd<CoordType> cmd)
 		{
-			(*q)[(*ctr)++%7]->push(cmd);
+			fields->q[fields->ctr++%7]->push(cmd);
 		}
 
-		void stop()
-		{
-			for(unsigned int i=0;i<worker->size();i++)
-			{
-				std::lock_guard<std::mutex> lg(*mut);
-				(*msg)[i]=0;
-				Cmd<CoordType> cmd;
-				cmd.grid=nullptr;
-				(*q)[i]->push2(cmd);
-			}
 
-			for(unsigned int i=0;i<worker->size();i++)
-			{
-
-				(*worker)[i].join();
-			}
-		}
 	private:
-		std::shared_ptr<int> ctr;
-		std::shared_ptr<std::vector<std::thread>> worker;
-		std::shared_ptr<std::mutex> mut;
-		std::shared_ptr<std::vector<int>> msg;
-		std::shared_ptr<std::vector<std::shared_ptr<SyncQueue<Cmd<CoordType>>>>> q;
-		std::shared_ptr<ThreadPoolDestructor> destro;
+
+		std::shared_ptr<ThreadPoolFields<CoordType>> fields;
 	};
 
 	template<typename CoordType>
@@ -505,7 +498,10 @@ public:
 		}
 
 
-
+		AdaptiveGrid()
+		{
+			AdaptiveGrid(ThreadPool<CoordType>(),0,0,0,1,1,1);
+		}
 
 
 		void clear()
