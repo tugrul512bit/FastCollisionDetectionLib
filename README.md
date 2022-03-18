@@ -1,5 +1,5 @@
 # FastCollisionDetectionLib
-C++ fast collision detection for uniform-distributed AABB particles using adaptive grid with implicit vectorization.
+C++ fast collision detection for uniform-distributed AABB particles using adaptive grid with implicit vectorization. 
 
 - 10 million dynamic particles AABB collision check per second against static grid of 8000 particles
 - 1000x speedup against naive brute-force algorithm for 40k particles (static vs static), with uniform-distribution in range [0 - 1]).
@@ -12,6 +12,8 @@ C++ fast collision detection for uniform-distributed AABB particles using adapti
 - - On every cell-overflow, it stretches the cell to AABB of all particles and converts to a grid of 4x4x4 cells each with 4 capacity
 - Implementation of IParticle is an AABB (axis-aligned bounding box) model 
 - - In user defined particle (box as example here), methods (getMinX/Y/Z and getMaxX/Y/Z)  must return AABB corners of the underlying user-particle
+
+For details, please visit ![https://github.com/tugrul512bit/FastCollisionDetectionLib/wiki](https://github.com/tugrul512bit/FastCollisionDetectionLib/wiki) wiki page.
 
 Working demo (requires linking pthread for header and gomp/fopenmp for this demo):
 
