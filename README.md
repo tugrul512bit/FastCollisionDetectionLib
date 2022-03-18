@@ -76,6 +76,7 @@ int main()
 		}
 
 		// thread-pool releases itself once it is out of scope
+		// single instance of thread pool can be used for multiple adaptive grids
 		FastColDetLib::ThreadPool<float> thr;
 		FastColDetLib::AdaptiveGrid<float> grid(thr,-1,-1,-1,d+1,d+1,d+1);
 		FastColDetLib::BruteForce<float> bruteForce;
