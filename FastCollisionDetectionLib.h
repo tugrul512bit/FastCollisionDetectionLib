@@ -827,19 +827,24 @@ public:
 				}
 			}
 
-			bool comp = false;
-			while(!comp)
+			// if at specific layer, wait for threads
+			if(*depth==8)
 			{
-				comp=true;
+				bool comp = false;
+				while(!comp)
 				{
-					std::lock_guard<std::mutex> lg(mut);
-					for(int cmd=0;cmd<completedCtr;cmd++)
+					comp=true;
 					{
-						comp&=completed[cmd];
+						std::lock_guard<std::mutex> lg(mut);
+						for(int cmd=0;cmd<completedCtr;cmd++)
+						{
+							comp&=completed[cmd];
+						}
 					}
+					std::this_thread::yield();
 				}
-				std::this_thread::yield();
 			}
+
 			for(auto& m:fields->mapping)
 			{
 				for(auto& m2:m.second)
