@@ -120,7 +120,7 @@ namespace FastColDetLib
 		FixedGridFields(const int w, const int h, const int d,	const int s,
 				const CoordType minXp, const CoordType minYp, const CoordType minZp,
 				const CoordType maxXp, const CoordType maxYp, const CoordType maxZp):
-					width(w),height(h),depth(d),storage(s),stride(storage+1 /* w*h*d*/),
+					width(w),height(h),depth(d),widthDiv1(CoordType(1)/w),heightDiv1(CoordType(1)/h),depthDiv1(CoordType(1)/d),storage(s),stride(storage+1 /* w*h*d*/),
 					minX(minXp),minY(minYp),minZ(minZp),maxX(maxXp),maxY(maxYp),maxZ(maxZp)
 		{
 
@@ -183,6 +183,15 @@ namespace FastColDetLib
 		const int getDepth () const noexcept { return depth;};
 
 		inline
+		const CoordType getWidthDiv1 () const noexcept { return widthDiv1;};
+
+		inline
+		const CoordType getHeightDiv1 () const noexcept { return heightDiv1;};
+
+		inline
+		const CoordType getDepthDiv1 () const noexcept { return depthDiv1;};
+
+		inline
 		const int getStorage () const noexcept { return storage;};
 
 		inline
@@ -210,6 +219,11 @@ namespace FastColDetLib
 		const int width;
 		const int height;
 		const int depth;
+
+		const CoordType widthDiv1;
+		const CoordType heightDiv1;
+		const CoordType depthDiv1;
+
 		const int storage;
 		const int stride;
 		const CoordType minX;
@@ -402,18 +416,22 @@ protected:
 			const int w = fields->getWidth();
 			const int h = fields->getHeight();
 			const int d = fields->getDepth();
-			const CoordType stepX = xDim/w;
-			const CoordType stepY = yDim/h;
-			const CoordType stepZ = zDim/d;
+			const CoordType wd1 = fields->getWidthDiv1();
+			const CoordType hd1 = fields->getHeightDiv1();
+			const CoordType dd1 = fields->getDepthDiv1();
+			// todo: optimize divisions by multiplications
+			const CoordType stepX = CoordType(1)/(xDim*wd1);
+			const CoordType stepY = CoordType(1)/(yDim*hd1);
+			const CoordType stepZ = CoordType(1)/(zDim*dd1);
 
 
-			const int cellIndexX = std::floor((minx - fields->minX)/stepX);
-			const int cellIndexY = std::floor((miny - fields->minY)/stepY);
-			const int cellIndexZ = std::floor((minz - fields->minZ)/stepZ);
+			const int cellIndexX = std::floor((minx - fields->minX)*stepX);
+			const int cellIndexY = std::floor((miny - fields->minY)*stepY);
+			const int cellIndexZ = std::floor((minz - fields->minZ)*stepZ);
 
-			const int cellIndexX2 = std::floor((maxx - fields->minX)/stepX);
-			const int cellIndexY2 = std::floor((maxy - fields->minY)/stepY);
-			const int cellIndexZ2 = std::floor((maxz - fields->minZ)/stepZ);
+			const int cellIndexX2 = std::floor((maxx - fields->minX)*stepX);
+			const int cellIndexY2 = std::floor((maxy - fields->minY)*stepY);
+			const int cellIndexZ2 = std::floor((maxz - fields->minZ)*stepZ);
 
 			for(int zz = cellIndexZ; zz<=cellIndexZ2; zz++)
 				for(int yy = cellIndexY; yy<=cellIndexY2; yy++)
@@ -619,6 +637,7 @@ public:
 		}
 
 		// compute collision between given particle and the already-prepared static object grid (after add(..) and getCollisions(..))
+		// also returns self-collisions if same particle was added as static particle before (by add(..))
 		std::vector<IParticle<CoordType>*> getDynamicCollisionListFor(IParticle<CoordType>* particle)
 		{
 			std::set<IParticle<CoordType>*> result;
