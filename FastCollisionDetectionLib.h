@@ -283,22 +283,27 @@ namespace FastColDetLib
 		std::condition_variable c;
 	};
 
+	struct MutexWithoutFalseSharing
+	{
+		std::mutex mut;
+		char padding[(64-sizeof(std::mutex))>0?(64-sizeof(std::mutex)):64];
+	};
 
 	template<typename CoordType>
 	class ThreadPoolFields
 	{
 	public:
-		ThreadPoolFields(){ctr=0;}
+		ThreadPoolFields() {ctr=0; }
 		int ctr;
 		std::vector<std::thread> worker;
-		std::mutex mut;
+		MutexWithoutFalseSharing mut[7];
 		std::vector<int> msg;
 		std::vector<std::shared_ptr<SyncQueue<Cmd<CoordType>>>> q;
 		~ThreadPoolFields()
 		{
 			for(unsigned int i=0;i<worker.size();i++)
 			{
-				std::lock_guard<std::mutex> lg(mut);
+				std::lock_guard<std::mutex> lg(mut[i].mut);
 				msg[i]=0;
 				Cmd<CoordType> cmd;
 				cmd.grid=nullptr;
@@ -338,7 +343,7 @@ namespace FastColDetLib
 							{
 								{
 									{
-										std::lock_guard<std::mutex> lg(fields->mut);
+										std::lock_guard<std::mutex> lg(fields->mut[i].mut);
 										work=(fields->msg[i]>0);
 									}
 
@@ -803,7 +808,7 @@ public:
 				else // if a grid
 				{
 					// if at specific layer, enable threads
-					if(*depth==8)
+					if(*depth==3)
 					{
 						Cmd<CoordType> cmd;
 						cmd.completed=&completed[completedCtr++];
@@ -829,7 +834,7 @@ public:
 			}
 
 			// if at specific layer, wait for threads
-			if(*depth==8)
+			if(*depth==3)
 			{
 				bool comp = false;
 				while(!comp)
