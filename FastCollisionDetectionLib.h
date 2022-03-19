@@ -111,6 +111,11 @@ namespace FastColDetLib
 
 
 	using GridDataType = int;
+	struct MutexWithoutFalseSharing
+	{
+		std::mutex mut;
+		char padding[(64-sizeof(std::mutex))>0?(64-sizeof(std::mutex)):64];
+	};
 
 	// Fixed grid of cells (adaptive if a cell overflows)
 	template<typename CoordType>
@@ -283,11 +288,6 @@ namespace FastColDetLib
 		std::condition_variable c;
 	};
 
-	struct MutexWithoutFalseSharing
-	{
-		std::mutex mut;
-		char padding[(64-sizeof(std::mutex))>0?(64-sizeof(std::mutex)):64];
-	};
 
 	template<typename CoordType>
 	class ThreadPoolFields
@@ -394,7 +394,11 @@ protected:
 
 			*depth=depthPrm;
 
-			fields = std::make_shared<FixedGridFields<CoordType>>(2,2,2,8+*depth*2,minX,minY,minZ,maxX,maxY,maxZ);
+			if(*depth<8)
+				fields = std::make_shared<FixedGridFields<CoordType>>(4,4,4,63,minX,minY,minZ,maxX,maxY,maxZ);
+			else
+				fields = std::make_shared<FixedGridFields<CoordType>>(4,4,4,63+5*(*depth),minX,minY,minZ,maxX,maxY,maxZ);
+
 			subGrid = std::make_shared<std::vector<AdaptiveGrid<CoordType>>>();
 			fields->clearGrid();
 		}
@@ -502,7 +506,7 @@ public:
 
 			*depth=0;
 
-			fields = std::make_shared<FixedGridFields<CoordType>>(16,16,16,2,minX,minY,minZ,maxX,maxY,maxZ);
+			fields = std::make_shared<FixedGridFields<CoordType>>(2,2,2,63,minX,minY,minZ,maxX,maxY,maxZ);
 			subGrid = std::make_shared<std::vector<AdaptiveGrid<CoordType>>>();
 			fields->clearGrid();
 		}
@@ -612,6 +616,9 @@ public:
 
 
 									newGrid.add(particlesPrm+ii,1);
+
+
+
 								}
 							}
 							else // if this is a grid
@@ -644,6 +651,7 @@ public:
 
 		// compute collision between given particle and the already-prepared static object grid (after add(..) and getCollisions(..))
 		// also returns self-collisions if same particle was added as static particle before (by add(..))
+		// thread-safe
 		std::vector<IParticle<CoordType>*> getDynamicCollisionListFor(IParticle<CoordType>* particle)
 		{
 			std::set<IParticle<CoordType>*> result;
@@ -750,7 +758,7 @@ public:
 
 
 			std::mutex mut;
-			bool completed[8]={false,false,false,false,false,false,false,false};
+			bool completed[64]={false,false,false,false,false,false,false,false};
 			int completedCtr = 0;
 			// "gather" operations on neighbor cells should be cache-friendly
 			for(int zz = 0; zz<d; zz++)
@@ -768,6 +776,8 @@ public:
 					const int computedCellIndex = computedCellIndex0;
 					if(n<2)
 						continue;
+
+					std::map<IParticle<CoordType>*,std::map<IParticle<CoordType>*,bool>> localMap;
 
 					for(int j=0;j<n-1;j++)
 					{
@@ -796,12 +806,20 @@ public:
 										const CoordType maxz2 = fields->particles[k2]->getMaxZ();
 										if(intersectDim(minz, maxz, minz2, maxz2))
 										{
-											std::lock_guard<std::mutex> lg(mut);
-											fields->mapping[fields->particles[k]][fields->particles[k2]]=true;
+											localMap[fields->particles[k]][fields->particles[k2]]=true;
 										}
 									}
 								}
 							}
+						}
+					}
+
+					{
+						std::lock_guard<std::mutex> lg(mut);
+						for(auto& lm:localMap)
+						{
+							for(auto& lm2:lm.second)
+								fields->mapping[lm.first][lm2.first]=true;
 						}
 					}
 				}
