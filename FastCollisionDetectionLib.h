@@ -320,14 +320,19 @@ namespace FastColDetLib
 		ThreadPool()
 		{
 			fields=std::make_shared<ThreadPoolFields<CoordType>>();
-
 			for(int i=0;i<7;i++)
 			{
 				fields->q.push_back(std::make_shared<SyncQueue<Cmd<CoordType>>>());
 				fields->msg.push_back(1);
+			}
+			auto ptr = fields.get();
+			for(int i=0;i<7;i++)
+			{
+
 				fields->worker.push_back(std::thread(
-						[&,i]()
+						[&,i,ptr]()
 						{
+							auto fields = ptr;
 							bool work = true;
 							while(work)
 							{
