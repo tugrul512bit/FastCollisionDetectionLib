@@ -11,38 +11,1152 @@
 #include<algorithm>
 #include<vector>
 #include<map>
+#include<unordered_map>
 #include<chrono>
 #include<memory>
 #include<math.h>
 #include<queue>
+#include<stack>
 #include<thread>
 #include<mutex>
 #include<set>
 #include<functional>
 #include<condition_variable>
-
+#include<unordered_set>
+#include<cmath>
 #include<iostream>
+
 
 namespace FastColDetLib
 {
-	class Bench
+
+class Bench
+{
+public:
+	Bench(size_t * targetPtr)
+	{
+		target=targetPtr;
+		t1 =  std::chrono::duration_cast< std::chrono::nanoseconds >(std::chrono::high_resolution_clock::now().time_since_epoch());
+	}
+
+	~Bench()
+	{
+		t2 =  std::chrono::duration_cast< std::chrono::nanoseconds >(std::chrono::high_resolution_clock::now().time_since_epoch());
+		*target= t2.count() - t1.count();
+	}
+private:
+	size_t * target;
+	std::chrono::nanoseconds t1,t2;
+};
+
+	template<typename DataType>
+	class Memory
 	{
 	public:
-		Bench(size_t * targetPtr)
+		Memory()
 		{
-			target=targetPtr;
-			t1 =  std::chrono::duration_cast< std::chrono::nanoseconds >(std::chrono::high_resolution_clock::now().time_since_epoch());
+			memory=std::make_shared<std::vector<DataType>>();
+			allocPtr=std::make_shared<int>();
+			*allocPtr = 0;
+			allocPtrPtr=allocPtr.get();
+			memory->resize(1024);
+			ptr=memory->data();
 		}
 
-		~Bench()
+		inline
+		const DataType get(const int index) const noexcept
 		{
-			t2 =  std::chrono::duration_cast< std::chrono::nanoseconds >(std::chrono::high_resolution_clock::now().time_since_epoch());
-			*target= t2.count() - t1.count();
+
+			return ((DataType* __restrict__ const)ptr)[index];
 		}
+
+		inline
+		void set(const int index, const DataType data) const noexcept
+		{
+
+			((DataType* __restrict__ const)ptr)[index]=data;
+		}
+
+		inline
+		void readFrom(Memory<DataType>& mem, const int index, const int indexThis, const int n)
+		{
+			/*
+			for(int i=0;i<n;i++)
+			{
+				ptr[i+indexThis] = mem.ptr[i+index];
+			}
+			*/
+
+			std::copy(mem.ptr+index,mem.ptr+index+n,ptr+indexThis);
+		}
+
+		inline
+		const int allocate(const int size)
+		{
+			const int result = *allocPtrPtr;
+
+			while(size + *allocPtrPtr >= memory->size())
+			{
+				memory->resize(memory->size()*2);
+			}
+			*allocPtrPtr += size;
+			ptr=memory->data();
+			return result;
+		}
+
+		inline
+		const int capacity()
+		{
+			return memory->size();
+		}
+
+		inline
+		void reset()
+		{
+			*allocPtrPtr = 0;
+		}
+
 	private:
-		size_t * target;
-		std::chrono::nanoseconds t1,t2;
+		DataType* ptr;
+		std::shared_ptr<int> allocPtr;
+		int* allocPtrPtr;
+		std::shared_ptr<std::vector<DataType>> memory;
 	};
+
+
+
+	struct MemoryPool
+	{
+		void clear()
+		{
+			nodeCollisionMask.reset();
+			cellCollisionMask.reset();
+			childNodeCount.reset();
+			index.reset();
+			indexParticle.reset();
+			minX.reset();
+			maxX.reset();
+			minY.reset();
+			maxY.reset();
+			minZ.reset();
+			maxZ.reset();
+			nodeMinX.reset();
+			nodeMinY.reset();
+			nodeMinZ.reset();
+			nodeInvWidth.reset();
+			nodeInvHeight.reset();
+			nodeInvDepth.reset();
+		}
+
+
+
+		// node-particle collision
+		Memory<unsigned char> nodeCollisionMask;
+
+		// cell-particle collision
+		Memory<unsigned char> cellCollisionMask;
+		Memory<char> childNodeCount;
+		Memory<int> index;
+		Memory<int> indexParticle;
+		Memory<float> nodeMinX;
+		Memory<float> nodeMinY;
+		Memory<float> nodeMinZ;
+		Memory<float> nodeInvWidth;
+		Memory<float> nodeInvHeight;
+		Memory<float> nodeInvDepth;
+		Memory<float> minX;
+		Memory<float> maxX;
+		Memory<float> minY;
+		Memory<float> maxY;
+		Memory<float> minZ;
+		Memory<float> maxZ;
+
+		Memory<int> idTmp[8];
+		Memory<float> minxTmp[8];
+		Memory<float> minyTmp[8];
+		Memory<float> minzTmp[8];
+		Memory<float> maxxTmp[8];
+		Memory<float> maxyTmp[8];
+		Memory<float> maxzTmp[8];
+
+	};
+
+	struct AdaptiveGridV2Fields
+	{
+		AdaptiveGridV2Fields(MemoryPool mPool, const float minx, const float miny, const float minz,
+				const float maxx, const float maxy, const float maxz):mem(mPool),
+						minCornerX(minx),minCornerY(miny),minCornerZ(minz),maxCornerX(maxx),maxCornerY(maxy),maxCornerZ(maxz),
+						cellWidth    ((maxx-minx)*0.5f),
+						cellHeight   ((maxy-miny)*0.5f),
+						cellDepth    ((maxz-minz)*0.5f),
+						cellWidthInv (1.0f/((maxx-minx)*0.5f)),
+						cellHeightInv(1.0f/((maxy-miny)*0.5f)),
+						cellDepthInv (1.0f/((maxz-minz)*0.5f))
+		{
+
+		}
+
+		MemoryPool mem;
+		const float minCornerX;
+		const float minCornerY;
+		const float minCornerZ;
+
+		const float maxCornerX;
+		const float maxCornerY;
+		const float maxCornerZ;
+
+		const float cellWidth;
+		const float cellHeight;
+		const float cellDepth;
+
+		const float cellWidthInv;
+		const float cellHeightInv;
+		const float cellDepthInv;
+	};
+
+	const int testParticleLimit = 32; // maximum particle AABB overlapping allowed on same cell
+	class AdaptiveGridV2
+	{
+	private:
+
+
+	    // stores a bit in a byte at a position
+	    inline void storeBit(unsigned char & data, const unsigned char value, const int pos) noexcept
+	    {
+	    	data = (value << pos) | (data & ~(1 << pos));
+	    }
+	public:
+		AdaptiveGridV2(MemoryPool mem, const float minx, const float miny, const float minz,
+				const float maxx, const float maxy, const float maxz)
+		{
+			fields = std::make_shared<AdaptiveGridV2Fields>(mem,minx,miny,minz,maxx,maxy,maxz);
+
+		}
+
+		void clear()
+		{
+			fields->mem.clear();
+
+			// set current (root) node's particle start index to 0
+			const int indexParticleStart = fields->mem.index.allocate(1);
+			fields->mem.index.set(indexParticleStart,0);
+
+			// set current (root) node's number of particles to 0
+			const int indexNumParticles = fields->mem.index.allocate(1);
+			fields->mem.index.set(indexNumParticles,0);
+
+			// set current (root) node's child node start
+			const int indexChildNodeStart = fields->mem.index.allocate(1);
+			fields->mem.index.set(indexChildNodeStart,9);
+
+
+			// set AABB of current (root) node
+			// X
+			const int indexBoundMinX = fields->mem.index.allocate(1);
+			const int indexBoundMinXFloat = fields->mem.nodeMinX.allocate(1);
+			fields->mem.nodeMinX.set(indexBoundMinXFloat,fields->minCornerX);
+			fields->mem.index.set(indexBoundMinX,indexBoundMinXFloat);
+
+			// Y
+			const int indexBoundMinY = fields->mem.index.allocate(1);
+			const int indexBoundMinYFloat = fields->mem.nodeMinY.allocate(1);
+			fields->mem.nodeMinY.set(indexBoundMinYFloat,fields->minCornerY);
+			fields->mem.index.set(indexBoundMinY,indexBoundMinYFloat);
+
+			// Z
+			const int indexBoundMinZ = fields->mem.index.allocate(1);
+			const int indexBoundMinZFloat = fields->mem.nodeMinZ.allocate(1);
+			fields->mem.nodeMinZ.set(indexBoundMinZFloat,fields->minCornerZ);
+			fields->mem.index.set(indexBoundMinZ,indexBoundMinZFloat);
+
+			// cell inverse width
+			const int indexWidth = fields->mem.index.allocate(1);
+			const int indexWidthFloat = fields->mem.nodeInvWidth.allocate(1);
+			fields->mem.nodeInvWidth.set(indexWidthFloat,fields->cellWidthInv);
+			fields->mem.index.set(indexWidth,indexWidthFloat);
+
+			// cell inverse height
+			const int indexHeight = fields->mem.index.allocate(1);
+			const int indexHeightFloat = fields->mem.nodeInvHeight.allocate(1);
+			fields->mem.nodeInvHeight.set(indexHeightFloat,fields->cellHeightInv);
+			fields->mem.index.set(indexHeight,indexHeightFloat);
+
+			// cell inverse depth
+			const int indexDepth = fields->mem.index.allocate(1);
+			const int indexDepthFloat = fields->mem.nodeInvDepth.allocate(1);
+			fields->mem.nodeInvDepth.set(indexDepthFloat,fields->cellDepthInv);
+			fields->mem.index.set(indexDepth,indexDepthFloat);
+
+			fields->mem.childNodeCount.set(fields->mem.childNodeCount.allocate(1),0);
+			fields->mem.nodeCollisionMask.set(fields->mem.nodeCollisionMask.allocate(1),0);
+		}
+
+		inline
+		void addParticleDirectAllocatedAABB(const int id, const float minx, const float miny, const float minz,
+				const float maxx, const float maxy, const float maxz,
+				int nodeOffset = 0, const int allocOffs=0, const unsigned char nodeMask=0)
+		{
+			fields->mem.indexParticle.set(allocOffs,id);
+			fields->mem.cellCollisionMask.set(allocOffs,nodeMask);
+			fields->mem.maxX.set(allocOffs,maxx);
+			fields->mem.maxY.set(allocOffs,maxy);
+			fields->mem.maxZ.set(allocOffs,maxz);
+			fields->mem.minX.set(allocOffs,minx);
+			fields->mem.minY.set(allocOffs,miny);
+			fields->mem.minZ.set(allocOffs,minz);
+		}
+
+		void addParticleDirectAABB(const int id, const float minx, const float miny, const float minz,
+				const float maxx, const float maxy, const float maxz,
+				int nodeOffset = 0, const bool markStart = false)
+		{
+			const int particleStart = fields->mem.index.get(nodeOffset);
+			const int pId = fields->mem.indexParticle.allocate(1);
+			const int maskId = fields->mem.cellCollisionMask.allocate(1);
+			const int maxXId = fields->mem.maxX.allocate(1);
+			const int maxYId = fields->mem.maxY.allocate(1);
+			const int maxZId = fields->mem.maxZ.allocate(1);
+			const int minXId = fields->mem.minX.allocate(1);
+			const int minYId = fields->mem.minY.allocate(1);
+			const int minZId = fields->mem.minZ.allocate(1);
+			fields->mem.indexParticle.set(pId,id);
+			fields->mem.cellCollisionMask.set(maskId,0);
+			fields->mem.maxX.set(maxXId,maxx);
+			fields->mem.maxY.set(maxYId,maxy);
+			fields->mem.maxZ.set(maxZId,maxz);
+			fields->mem.minX.set(minXId,minx);
+			fields->mem.minY.set(minYId,miny);
+			fields->mem.minZ.set(minZId,minz);
+			fields->mem.index.set(nodeOffset+1,fields->mem.index.get(nodeOffset+1)+1);
+			fields->mem.index.set(nodeOffset+2,0);
+			if(pId==0 || markStart)
+			{
+				fields->mem.index.set(particleStart,pId);
+
+			}
+		}
+
+		void addParticleAABB(const int id, const float minx, const float miny, const float minz,
+				const float maxx, const float maxy, const float maxz,
+				int nodeOffset = 0, const bool markStart = false)
+		{
+
+			// get current node's information
+			const int particleStart = fields->mem.index.get(nodeOffset);
+			const int numParticle = fields->mem.index.get(nodeOffset+1);
+			const int childNodeStart = fields->mem.index.get(nodeOffset+2);
+
+			const int indexBoundMinX = fields->mem.index.get(nodeOffset+3);
+			const int indexBoundMinY = fields->mem.index.get(nodeOffset+4);
+			const int indexBoundMinZ = fields->mem.index.get(nodeOffset+5);
+
+			const int indexCellWidthInv = fields->mem.index.get(nodeOffset+6);
+			const int indexCellHeightInv = fields->mem.index.get(nodeOffset+7);
+			const int indexCellDepthInv = fields->mem.index.get(nodeOffset+8);
+
+			const float minCornerX = fields->mem.nodeMinX.get(indexBoundMinX);
+			const float minCornerY = fields->mem.nodeMinY.get(indexBoundMinY);
+			const float minCornerZ = fields->mem.nodeMinZ.get(indexBoundMinZ);
+
+			const float cellWidthInv = fields->mem.nodeInvWidth.get(indexCellWidthInv);
+			const float cellHeightInv = fields->mem.nodeInvHeight.get(indexCellHeightInv);
+			const float cellDepthInv = fields->mem.nodeInvDepth.get(indexCellDepthInv);
+
+			const int indexStartX = std::floor((minx - minCornerX)*cellWidthInv);
+			const int indexEndX = std::floor((maxx - minCornerX)*cellWidthInv);
+
+			const int indexStartY = std::floor((miny - minCornerY)*cellHeightInv);
+			const int indexEndY = std::floor((maxy - minCornerY)*cellHeightInv);
+
+			const int indexStartZ = std::floor((minz - minCornerZ)*cellDepthInv);
+			const int indexEndZ = std::floor((maxz - minCornerZ)*cellDepthInv);
+
+
+			// prepare cell indicator mask (1 bit = has object, 0 bit = empty))
+			unsigned char maskCellsFilled=0;
+			for(int k=indexStartZ; k<=indexEndZ; k++)
+			{
+				if(k<0 || k>=2)
+					continue;
+				for(int j=indexStartY; j<=indexEndY; j++)
+				{
+					if(j<0 || j>=2)
+						continue;
+					for(int i=indexStartX; i<=indexEndX; i++)
+					{
+						if(i<0 || i>=2)
+							continue;
+
+						storeBit(maskCellsFilled,1,i+j*2+k*4);
+
+					}
+				}
+			}
+
+			const int pId = fields->mem.indexParticle.allocate(1);
+			const int maskId = fields->mem.cellCollisionMask.allocate(1);
+			const int maxXId = fields->mem.maxX.allocate(1);
+			const int maxYId = fields->mem.maxY.allocate(1);
+			const int maxZId = fields->mem.maxZ.allocate(1);
+			const int minXId = fields->mem.minX.allocate(1);
+			const int minYId = fields->mem.minY.allocate(1);
+			const int minZId = fields->mem.minZ.allocate(1);
+			fields->mem.index.set(nodeOffset+2,0);
+			fields->mem.indexParticle.set(pId,id);
+			fields->mem.cellCollisionMask.set(maskId,maskCellsFilled);
+			fields->mem.maxX.set(maxXId,maxx);
+			fields->mem.maxY.set(maxYId,maxy);
+			fields->mem.maxZ.set(maxZId,maxz);
+			fields->mem.minX.set(minXId,minx);
+			fields->mem.minY.set(minYId,miny);
+			fields->mem.minZ.set(minZId,minz);
+			fields->mem.index.set(nodeOffset+1,numParticle+1);
+			if(pId==0 || markStart)
+			{
+				fields->mem.index.set(particleStart,pId);
+			}
+		}
+
+
+		inline
+		const bool intersectDim(const float minx, const float maxx, const float minx2, const float maxx2) const noexcept
+		{
+			return !((maxx < minx2) || (maxx2 < minx));
+		}
+
+
+		struct NodeTask
+		{
+			NodeTask(const int n1=0):nodePointer(n1){  }
+			const int nodePointer;
+		};
+
+		struct LeafTask
+		{
+			LeafTask(const int n1=0):particlePointer(n1){  }
+			int particlePointer;
+		};
+
+		// keeps record of unique values inserted
+		// works for positive integers (-1 reserved for first comparisons)
+		template<typename SignedIntegralType, int n>
+		struct FastUnique
+		{
+		    public:
+		    FastUnique()
+		    {
+		         it=0;
+		         for(int i=0;i<n;i++)
+		             dict[i]=-1;
+		    }
+
+		    inline
+		    void insert(const SignedIntegralType val)
+		    {
+		        const bool result = testImpl(val);
+		        dict[it]=(result?val:dict[it]);
+		        it+=(result?1:0);
+		    }
+
+		    inline
+		    const SignedIntegralType get(const int index) const noexcept
+		    {
+		        return dict[index];
+		    }
+
+
+
+		    inline
+		    const bool test(const SignedIntegralType val) noexcept
+		    {
+		    	return testImpl(val);
+		    }
+
+		    inline
+		    const void iterateSet(const SignedIntegralType val) noexcept
+		    {
+		    	dict[it++]=val;
+		    }
+
+		    const int size()
+		    {
+		        return it;
+		    }
+
+		    SignedIntegralType * begin()
+		    {
+		      return dict;
+		    }
+
+		    SignedIntegralType * end()
+		    {
+		      return dict + it;
+		    }
+
+		    private:
+		    SignedIntegralType dict[n];
+		    SignedIntegralType c[n];
+		    int it;
+
+		    inline
+		    bool testImpl(const int val) noexcept
+		    {
+		        for(int i=0;i<n;i++)
+		          c[i]=(dict[i]==val);
+
+		        SignedIntegralType s = 0;
+		        for(int i=0;i<n;i++)
+		          s+=c[i];
+		        return s==0;
+		    }
+		};
+
+		// returns id values of particles
+		std::vector<int> findCollisions(const float minx, const float miny, const float minz,
+				const float maxx, const float maxy, const float maxz)
+		{
+			FastUnique<int32_t, testParticleLimit> fastSet;
+			std::vector<int> result;
+			std::stack<NodeTask> nodesToCompute;
+			std::vector<LeafTask> particlesToCompute;
+
+
+			// push root node to work queue
+			nodesToCompute.push(NodeTask(0));
+
+
+
+			// traverse all colliding sparse cells
+			while(!nodesToCompute.empty() /* stack>=0 */)
+			{
+				NodeTask task = nodesToCompute.top();
+				nodesToCompute.pop();
+
+
+
+				const int pointer = fields->mem.index.get(task.nodePointer+2);
+				const int numChildNodes = fields->mem.childNodeCount.get(task.nodePointer/9);
+
+				// if this is not a leaf node, traverse all child nodes (they are sparse, so may be less than 8(8bit mask) or 64(64 bit mask))
+				if(pointer<0)
+				{
+					// get current node's information
+					const int indexBoundMinX = fields->mem.index.get(task.nodePointer+3);
+					const int indexBoundMinY = fields->mem.index.get(task.nodePointer+4);
+					const int indexBoundMinZ = fields->mem.index.get(task.nodePointer+5);
+
+					const int indexCellWidthInv = fields->mem.index.get(task.nodePointer+6);
+					const int indexCellHeightInv = fields->mem.index.get(task.nodePointer+7);
+					const int indexCellDepthInv = fields->mem.index.get(task.nodePointer+8);
+
+					const float minCornerX = fields->mem.nodeMinX.get(indexBoundMinX);
+					const float minCornerY = fields->mem.nodeMinY.get(indexBoundMinY);
+					const float minCornerZ = fields->mem.nodeMinZ.get(indexBoundMinZ);
+
+					const float cellWidthInv = fields->mem.nodeInvWidth.get(indexCellWidthInv);
+					const float cellHeightInv = fields->mem.nodeInvHeight.get(indexCellHeightInv);
+					const float cellDepthInv = fields->mem.nodeInvDepth.get(indexCellDepthInv);
+
+
+					const int indexStartX = std::floor((minx - minCornerX)*cellWidthInv);
+					const int indexEndX = std::floor((maxx - minCornerX)*cellWidthInv);
+
+					const int indexStartY = std::floor((miny - minCornerY)*cellHeightInv);
+					const int indexEndY = std::floor((maxy - minCornerY)*cellHeightInv);
+
+					const int indexStartZ = std::floor((minz - minCornerZ)*cellDepthInv);
+					const int indexEndZ = std::floor((maxz - minCornerZ)*cellDepthInv);
+
+
+					// prepare cell indicator mask (1 bit = has object, 0 bit = empty))
+					unsigned char maskCellsFilled=0;
+					for(int k=indexStartZ; k<=indexEndZ; k++)
+					{
+						if(k<0 || k>=2)
+							continue;
+						for(int j=indexStartY; j<=indexEndY; j++)
+						{
+							if(j<0 || j>=2)
+								continue;
+							for(int i=indexStartX; i<=indexEndX; i++)
+							{
+								if(i<0 || i>=2)
+									continue;
+
+								storeBit(maskCellsFilled,1,i+j*2+k*4);
+
+							}
+						}
+					}
+
+
+					const int nodeOffset = -pointer-1;
+					for(int i=0;i<numChildNodes;i++)
+					{
+						// if there is possible collision (accelerated by bit mask for collisions)
+						unsigned char cellMask = fields->mem.nodeCollisionMask.get((nodeOffset+i*9)/9);
+						if(maskCellsFilled & cellMask)
+						{
+							nodesToCompute.push(NodeTask(nodeOffset+i*9));
+						}
+					}
+				}
+				else
+				{
+					// this is leaf node
+
+					const int ptr = fields->mem.index.get(task.nodePointer);
+					const int n = fields->mem.index.get(task.nodePointer+1);
+
+
+					const int indexBoundMinX = fields->mem.index.get(task.nodePointer+3);
+					const int indexBoundMinY = fields->mem.index.get(task.nodePointer+4);
+					const int indexBoundMinZ = fields->mem.index.get(task.nodePointer+5);
+
+					const int indexCellWidthInv = fields->mem.index.get(task.nodePointer+6);
+					const int indexCellHeightInv = fields->mem.index.get(task.nodePointer+7);
+					const int indexCellDepthInv = fields->mem.index.get(task.nodePointer+8);
+
+					const float minCornerX = fields->mem.nodeMinX.get(indexBoundMinX);
+					const float minCornerY = fields->mem.nodeMinY.get(indexBoundMinY);
+					const float minCornerZ = fields->mem.nodeMinZ.get(indexBoundMinZ);
+
+					const float cellWidthInv = fields->mem.nodeInvWidth.get(indexCellWidthInv);
+					const float cellHeightInv = fields->mem.nodeInvHeight.get(indexCellHeightInv);
+					const float cellDepthInv = fields->mem.nodeInvDepth.get(indexCellDepthInv);
+
+					const int indexStartX = std::floor((minx - minCornerX)*cellWidthInv);
+					const int indexEndX = std::floor((maxx - minCornerX)*cellWidthInv);
+
+					const int indexStartY = std::floor((miny - minCornerY)*cellHeightInv);
+					const int indexEndY = std::floor((maxy - minCornerY)*cellHeightInv);
+
+					const int indexStartZ = std::floor((minz - minCornerZ)*cellDepthInv);
+					const int indexEndZ = std::floor((maxz - minCornerZ)*cellDepthInv);
+
+
+					// prepare cell indicator mask (1 bit = has object, 0 bit = empty))
+
+
+					unsigned char maskCellsFilled=0;
+					for(int k=indexStartZ; k<=indexEndZ; k++)
+					{
+						if(k<0 || k>=2)
+							continue;
+						for(int j=indexStartY; j<=indexEndY; j++)
+						{
+							if(j<0 || j>=2)
+								continue;
+							for(int i=indexStartX; i<=indexEndX; i++)
+							{
+								if(i<0 || i>=2)
+									continue;
+
+								storeBit(maskCellsFilled,1,i+j*2+k*4);
+
+							}
+						}
+					}
+
+
+
+					for(int i=0;i<n;i++)
+					{
+						const int index = ptr+i;
+						if(maskCellsFilled & fields->mem.cellCollisionMask.get(index))
+						{
+							particlesToCompute.push_back(LeafTask(index));
+						}
+
+					}
+
+
+
+				}
+			}
+
+			const int sz = particlesToCompute.size();
+
+			//f(particlesToCompute.data(),sz);
+			for(int i=0;i<sz;i++)
+			{
+				const int index = particlesToCompute[i].particlePointer;
+				const int partId = fields->mem.indexParticle.get(index);
+
+
+				if(fastSet.test(partId))
+				{
+
+
+
+						const float minX = fields->mem.minX.get(index);
+						const float maxX = fields->mem.maxX.get(index);
+
+
+						if(intersectDim(minx, maxx, minX, maxX))
+						{
+							const float minY = fields->mem.minY.get(index);
+							const float maxY = fields->mem.maxY.get(index);
+							if(intersectDim(miny, maxy, minY, maxY))
+							{
+								const float minZ = fields->mem.minZ.get(index);
+								const float maxZ = fields->mem.maxZ.get(index);
+								if(intersectDim(minz, maxz, minZ, maxZ))
+								{
+									result.push_back(partId);
+									fastSet.iterateSet(partId);
+								}
+							}
+						}
+
+				}
+			}
+
+			return result;
+		}
+
+		struct PtrN
+		{
+			int ptr;
+			int n;
+		};
+
+		// visits all leaf nodes and computes nxn collision pairs
+		std::vector<std::pair<int,int>> findCollisionsAll()
+		{
+			std::unordered_map<int,FastUnique<int32_t, testParticleLimit>> fastSet;
+			std::vector<std::pair<int,int>> result;
+			std::stack<NodeTask> nodesToCompute;
+			std::vector<PtrN> ptrn;
+
+
+			// push root node to work queue
+			nodesToCompute.push(NodeTask(0));
+
+
+
+			// traverse all colliding sparse cells
+			while(!nodesToCompute.empty() /* stack>=0 */)
+			{
+				NodeTask task = nodesToCompute.top();
+				nodesToCompute.pop();
+
+
+
+				const int pointer = fields->mem.index.get(task.nodePointer+2);
+				const int numChildNodes = fields->mem.childNodeCount.get(task.nodePointer/9);
+
+				// if this is not a leaf node, traverse all child nodes (they are sparse, so may be less than 8(8bit mask) or 64(64 bit mask))
+				if(pointer<0)
+				{
+
+
+
+					const int nodeOffset = -pointer-1;
+					for(int i=0;i<numChildNodes;i++)
+					{
+						nodesToCompute.push(NodeTask(nodeOffset+i*9));
+					}
+				}
+				else
+				{
+					// this is leaf node
+
+					const int ptr = fields->mem.index.get(task.nodePointer);
+					const int n = fields->mem.index.get(task.nodePointer+1);
+
+					ptrn.push_back({ptr,n});
+				}
+			}
+
+			// todo: parallelize
+			const int sz = ptrn.size();
+			for(int k=0;k<sz;k++)
+			{
+				const int ptr = ptrn[k].ptr;
+				const int n = ptrn[k].n;
+				for(int i=0;i<n-1;i++)
+				{
+					const int index = ptr+i;
+					const int partId = fields->mem.indexParticle.get(index);
+					const float minx = fields->mem.minX.get(index);
+					const float maxx = fields->mem.maxX.get(index);
+					const float miny = fields->mem.minY.get(index);
+					const float maxy = fields->mem.maxY.get(index);
+					const float minz = fields->mem.minZ.get(index);
+					const float maxz = fields->mem.maxZ.get(index);
+					auto& map = fastSet[partId];
+					for(int j=i;j<n;j++)
+					{
+
+
+						const int index2 = ptr+j;
+
+						const int partId2 = fields->mem.indexParticle.get(index2);
+						if(partId>=partId2 || !(fields->mem.cellCollisionMask.get(index) & fields->mem.cellCollisionMask.get(index2)))
+							continue;
+						if(map.test(partId2))
+						{
+
+							const float minX = fields->mem.minX.get(index2);
+							const float maxX = fields->mem.maxX.get(index2);
+
+							if(intersectDim(minx, maxx, minX, maxX))
+							{
+
+								const float minY = fields->mem.minY.get(index2);
+								const float maxY = fields->mem.maxY.get(index2);
+								if(intersectDim(miny, maxy, minY, maxY))
+								{
+
+									const float minZ = fields->mem.minZ.get(index2);
+									const float maxZ = fields->mem.maxZ.get(index2);
+									if(intersectDim(minz, maxz, minZ, maxZ))
+									{
+										result.push_back(std::pair<int,int>(partId,partId2));
+										map.iterateSet(partId2);
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			return result;
+		}
+
+		void buildTree()
+		{
+
+
+
+			int particleStart = fields->mem.index.get(0);
+			int numParticle = fields->mem.index.get(1);
+
+			int nodeOffset = 0;
+
+
+
+			float minCornerX = fields->mem.nodeMinX.get(fields->mem.index.get(3));
+			float minCornerY = fields->mem.nodeMinY.get(fields->mem.index.get(4));
+			float minCornerZ = fields->mem.nodeMinZ.get(fields->mem.index.get(5));
+			float cellWidthInv =  fields->mem.nodeInvWidth.get(fields->mem.index.get(6));
+			float cellHeightInv =  fields->mem.nodeInvHeight.get(fields->mem.index.get(7));
+			float cellDepthInv =  fields->mem.nodeInvDepth.get(fields->mem.index.get(8));
+			float cellWidth =  1.0f/cellWidthInv;
+			float cellHeight =  1.0f/cellHeightInv;
+			float cellDepth =  1.0f/cellDepthInv;
+			int ctr=0;
+
+			int maxNodeOffset = 9;
+
+			while(nodeOffset <= maxNodeOffset)
+			{
+
+
+				int ctrTmp[8]={0,0,0,0,0,0,0,0};
+
+
+				// if child node pointer not set up
+
+
+				if(fields->mem.index.get(nodeOffset+2)<nodeOffset && fields->mem.index.get(fields->mem.index.get(nodeOffset+2)+2)>=0)
+				{
+					fields->mem.index.set(fields->mem.index.get(nodeOffset+2)+2,-(nodeOffset+1));
+				}
+
+
+				int childNodeCount = 0;
+
+				if(numParticle > testParticleLimit)
+				{
+					ctr++;
+
+					{
+
+						for(int zz = 0; zz<2; zz++)
+							for(int yy = 0; yy<2; yy++)
+								for(int xx = 0; xx<2; xx++)
+								{
+									// allocate node
+									const int index0 = xx+yy*2+zz*4;
+									fields->mem.idTmp[index0].reset();
+									fields->mem.minxTmp[index0].reset();
+									fields->mem.minyTmp[index0].reset();
+									fields->mem.minzTmp[index0].reset();
+									fields->mem.maxxTmp[index0].reset();
+									fields->mem.maxyTmp[index0].reset();
+									fields->mem.maxzTmp[index0].reset();
+									fields->mem.idTmp[index0].allocate(numParticle);
+									fields->mem.minxTmp[index0].allocate(numParticle);
+									fields->mem.minyTmp[index0].allocate(numParticle);
+									fields->mem.minzTmp[index0].allocate(numParticle);
+									fields->mem.maxxTmp[index0].allocate(numParticle);
+									fields->mem.maxyTmp[index0].allocate(numParticle);
+									fields->mem.maxzTmp[index0].allocate(numParticle);
+
+								}
+					}
+
+
+					{
+
+
+
+
+						for(int ii=0;ii<numParticle;ii++)
+						{
+							const int idParticle = fields->mem.indexParticle.get(particleStart+ii);
+							const float minx = fields->mem.minX.get(particleStart+ii);
+							const float miny = fields->mem.minY.get(particleStart+ii);
+							const float minz = fields->mem.minZ.get(particleStart+ii);
+							const float maxx = fields->mem.maxX.get(particleStart+ii);
+							const float maxy = fields->mem.maxY.get(particleStart+ii);
+							const float maxz = fields->mem.maxZ.get(particleStart+ii);
+
+							const int indexStartX = std::floor((minx - minCornerX)*cellWidthInv);
+							const int indexEndX = std::floor((maxx - minCornerX)*cellWidthInv);
+
+							const int indexStartY = std::floor((miny - minCornerY)*cellHeightInv);
+							const int indexEndY = std::floor((maxy - minCornerY)*cellHeightInv);
+
+							const int indexStartZ = std::floor((minz -minCornerZ)*cellDepthInv);
+							const int indexEndZ = std::floor((maxz - minCornerZ)*cellDepthInv);
+
+							// prepare cell indicator mask (1 bit = has object, 0 bit = empty))
+
+							for(int k=indexStartZ; k<=indexEndZ; k++)
+							{
+								if(k<0 || k>=2)
+									continue;
+								for(int j=indexStartY; j<=indexEndY; j++)
+								{
+									if(j<0 || j>=2)
+										continue;
+									for(int i=indexStartX; i<=indexEndX; i++)
+									{
+										if(i<0 || i>=2)
+											continue;
+
+
+										const int index0 = i+j*2+k*4;
+
+
+										fields->mem.idTmp[index0].set(ctrTmp[index0],idParticle);
+										fields->mem.minxTmp[index0].set(ctrTmp[index0],minx);
+										fields->mem.minyTmp[index0].set(ctrTmp[index0],miny);
+										fields->mem.minzTmp[index0].set(ctrTmp[index0],minz);
+										fields->mem.maxxTmp[index0].set(ctrTmp[index0],maxx);
+										fields->mem.maxyTmp[index0].set(ctrTmp[index0],maxy);
+										fields->mem.maxzTmp[index0].set(ctrTmp[index0],maxz);
+										ctrTmp[index0]++;
+									}
+								}
+							}
+						}
+
+
+					}
+
+
+					// add all particles in order (from first child node to last child node)
+					childNodeCount=0;
+					for(int zz = 0; zz<2; zz++)
+						for(int yy = 0; yy<2; yy++)
+							for(int xx = 0; xx<2; xx++)
+							{
+								const int index0 = xx+yy*2+zz*4;
+								const int sz = ctrTmp[index0];
+
+
+								if(sz>0)
+								{
+									childNodeCount++;
+
+									const int nodeIndexOfs         = fields->mem.index.allocate(9);
+									const int particleStartCur     = nodeIndexOfs;
+									const int numParticleCur       = nodeIndexOfs+1;
+									const int childNodeStartCur    = nodeIndexOfs+2;
+
+									const int nodeBoundMinX        = nodeIndexOfs+3;
+									const int nodeBoundMinY        = nodeIndexOfs+4;
+									const int nodeBoundMinZ        = nodeIndexOfs+5;
+
+									const int nodeInvWidth         = nodeIndexOfs+6;
+									const int nodeInvHeight        = nodeIndexOfs+7;
+									const int nodeInvDepth         = nodeIndexOfs+8;
+									const int tmpIndex = fields->mem.childNodeCount.allocate(1);
+									const int nodeBoundMinXFloat        = fields->mem.nodeMinX.allocate(1);
+									const int nodeBoundMinYFloat        = fields->mem.nodeMinY.allocate(1);
+									const int nodeBoundMinZFloat        = fields->mem.nodeMinZ.allocate(1);
+
+									const int nodeInvWidthFloat         = fields->mem.nodeInvWidth.allocate(1);
+									const int nodeInvHeightFloat        = fields->mem.nodeInvHeight.allocate(1);
+									const int nodeInvDepthFloat         = fields->mem.nodeInvDepth.allocate(1);
+
+									fields->mem.nodeMinX.set(nodeBoundMinXFloat,minCornerX+xx*cellWidth);
+									fields->mem.nodeMinY.set(nodeBoundMinYFloat,minCornerY+yy*cellHeight);
+									fields->mem.nodeMinZ.set(nodeBoundMinZFloat,minCornerZ+zz*cellDepth);
+
+									fields->mem.nodeInvWidth.set(nodeInvWidthFloat,cellWidthInv*2.0f);
+									fields->mem.nodeInvHeight.set(nodeInvHeightFloat,cellHeightInv*2.0f);
+									fields->mem.nodeInvDepth.set(nodeInvDepthFloat,cellDepthInv*2.0f);
+
+
+									fields->mem.index.set(nodeBoundMinX,nodeBoundMinXFloat);
+									fields->mem.index.set(nodeBoundMinY,nodeBoundMinYFloat);
+									fields->mem.index.set(nodeBoundMinZ,nodeBoundMinZFloat);
+
+									fields->mem.index.set(nodeInvWidth,nodeInvWidthFloat);
+									fields->mem.index.set(nodeInvHeight,nodeInvHeightFloat);
+									fields->mem.index.set(nodeInvDepth,nodeInvDepthFloat);
+									const int nodeMaskIndex = fields->mem.nodeCollisionMask.allocate(1);
+									unsigned char nodeMask = 0;
+									storeBit(nodeMask,1,index0);
+									fields->mem.nodeCollisionMask.set(nodeMaskIndex,nodeMask);
+
+									const int allocOffset = fields->mem.indexParticle.allocate(sz);
+									fields->mem.cellCollisionMask.allocate(sz);
+									fields->mem.maxX.allocate(sz);
+									fields->mem.maxY.allocate(sz);
+									fields->mem.maxZ.allocate(sz);
+									fields->mem.minX.allocate(sz);
+									fields->mem.minY.allocate(sz);
+									fields->mem.minZ.allocate(sz);
+
+
+									{
+
+										//for(int ii=0;ii<sz;ii++)
+										{
+											int allocOffs = allocOffset/*+ii*/;
+											//int id = fields->mem.idTmp[index0].get(ii);
+											fields->mem.indexParticle.readFrom(fields->mem.idTmp[index0],0,allocOffs,sz);
+											//fields->mem.cellCollisionMask.readFrom(allocOffs,nodeMask);
+
+
+
+
+
+											fields->mem.maxX.readFrom(fields->mem.maxxTmp[index0],0,allocOffs,sz);
+											fields->mem.maxY.readFrom(fields->mem.maxyTmp[index0],0,allocOffs,sz);
+											fields->mem.maxZ.readFrom(fields->mem.maxzTmp[index0],0,allocOffs,sz);
+											fields->mem.minX.readFrom(fields->mem.minxTmp[index0],0,allocOffs,sz);
+											fields->mem.minY.readFrom(fields->mem.minyTmp[index0],0,allocOffs,sz);
+											fields->mem.minZ.readFrom(fields->mem.minzTmp[index0],0,allocOffs,sz);
+
+
+
+
+
+											/*
+											addParticleDirectAllocatedAABB(fields->mem.idTmp[index0].get(ii),
+													fields->mem.minxTmp[index0].get(ii),
+													fields->mem.minyTmp[index0].get(ii),
+													fields->mem.minzTmp[index0].get(ii),
+													fields->mem.maxxTmp[index0].get(ii),
+													fields->mem.maxyTmp[index0].get(ii),
+													fields->mem.maxzTmp[index0].get(ii),
+													particleStartCur, allocOffset+ii,nodeMask);
+													*/
+										}
+									}
+
+									fields->mem.index.set(particleStartCur,allocOffset);
+									fields->mem.index.set(numParticleCur,sz);
+									fields->mem.index.set(childNodeStartCur,nodeOffset);
+
+
+									maxNodeOffset=particleStartCur;
+								}
+
+
+
+							}
+
+					fields->mem.childNodeCount.set(nodeOffset/9,childNodeCount);
+
+				}
+				else
+				{
+					fields->mem.childNodeCount.set(nodeOffset/9,0);
+
+					// compute collision mask for each particle
+
+					for(int i=0;i<numParticle;i++)
+					{
+
+						const int idParticle = fields->mem.indexParticle.get(particleStart+i);
+						const float minx = fields->mem.minX.get(particleStart+i);
+						const float miny = fields->mem.minY.get(particleStart+i);
+						const float minz = fields->mem.minZ.get(particleStart+i);
+						const float maxx = fields->mem.maxX.get(particleStart+i);
+						const float maxy = fields->mem.maxY.get(particleStart+i);
+						const float maxz = fields->mem.maxZ.get(particleStart+i);
+
+						const int indexStartX = std::floor((minx - minCornerX)*cellWidthInv);
+						const int indexEndX = std::floor((maxx - minCornerX)*cellWidthInv);
+
+						const int indexStartY = std::floor((miny - minCornerY)*cellHeightInv);
+						const int indexEndY = std::floor((maxy - minCornerY)*cellHeightInv);
+
+						const int indexStartZ = std::floor((minz -minCornerZ)*cellDepthInv);
+						const int indexEndZ = std::floor((maxz - minCornerZ)*cellDepthInv);
+
+						// prepare cell indicator mask (1 bit = has object, 0 bit = empty))
+						unsigned char mask = 0;
+						for(int kk=indexStartZ; kk<=indexEndZ; kk++)
+						{
+							if(kk<0 || kk>=2)
+								continue;
+							for(int jj=indexStartY; jj<=indexEndY; jj++)
+							{
+								if(jj<0 || jj>=2)
+									continue;
+								for(int ii=indexStartX; ii<=indexEndX; ii++)
+								{
+									if(ii<0 || ii>=2)
+										continue;
+
+									storeBit(mask,1,ii+jj*2+kk*4);
+								}
+							}
+						}
+						fields->mem.cellCollisionMask.set(particleStart+i,mask);
+					}
+				}
+
+				nodeOffset += 9;
+				numParticle=0;
+				if(nodeOffset <= maxNodeOffset)
+				{
+					particleStart = fields->mem.index.get(nodeOffset);
+					numParticle = fields->mem.index.get(nodeOffset+1);
+
+
+					minCornerX = fields->mem.nodeMinX.get(fields->mem.index.get(nodeOffset+3));
+					minCornerY = fields->mem.nodeMinY.get(fields->mem.index.get(nodeOffset+4));
+					minCornerZ = fields->mem.nodeMinZ.get(fields->mem.index.get(nodeOffset+5));
+					cellWidthInv =  fields->mem.nodeInvWidth.get(fields->mem.index.get(nodeOffset+6));
+					cellHeightInv =  fields->mem.nodeInvHeight.get(fields->mem.index.get(nodeOffset+7));
+					cellDepthInv =  fields->mem.nodeInvDepth.get(fields->mem.index.get(nodeOffset+8));
+					cellWidth =  1.0f/cellWidthInv;
+					cellHeight =  1.0f/cellHeightInv;
+					cellDepth =  1.0f/cellDepthInv;
+				}
+			}
+
+
+
+		}
+
+	private:
+		std::shared_ptr<AdaptiveGridV2Fields> fields;
+	};
+
+
+
+
 
 	/*
 	 * interface to build various objects that can collide each other
@@ -110,7 +1224,7 @@ namespace FastColDetLib
 	class AdaptiveGrid;
 
 
-	using GridDataType = int;
+	using GridDataType = char;
 	struct MutexWithoutFalseSharing
 	{
 		std::mutex mut;
@@ -125,57 +1239,16 @@ namespace FastColDetLib
 		FixedGridFields(const int w, const int h, const int d,	const int s,
 				const CoordType minXp, const CoordType minYp, const CoordType minZp,
 				const CoordType maxXp, const CoordType maxYp, const CoordType maxZp):
-					width(w),height(h),depth(d),widthDiv1(CoordType(1)/w),heightDiv1(CoordType(1)/h),depthDiv1(CoordType(1)/d),storage(s),stride(storage+1 /* w*h*d*/),
+					width(w),height(h),depth(d),widthDiv1(CoordType(1)/w),heightDiv1(CoordType(1)/h),depthDiv1(CoordType(1)/d),storage(s),
 					minX(minXp),minY(minYp),minZ(minZp),maxX(maxXp),maxY(maxYp),maxZ(maxZp)
 		{
 
-			grid.resize(width*height*depth*(storage+1));
+
 		}
 
 		~FixedGridFields()
 		{
 
-		}
-
-		inline
-		void clearGrid() noexcept
-		{
-			for(int k=0;k<depth;k++)
-			{
-				const int ki = k*width*height;
-				for(int j=0;j<height;j++)
-				{
-					const int jki = j*width + ki;
-					for(int i=0;i<width;i++)
-					{
-						//grid[i+jki]=0; // 0: no particle, -1: a grid
-						grid[(i+jki)*stride]=0; // 0: no particle, -1: a grid
-					}
-				}
-			}
-		}
-
-		inline
-		const GridDataType numParticlesAtCell(const int indexX, const int indexY, const int indexZ) const noexcept
-		{
-			//return grid[indexX + indexY*width + indexZ*width*height];
-			return grid[(indexX + indexY*width + indexZ*width*height)*stride];
-		}
-
-
-
-		inline
-		const GridDataType numParticlesAtCell(const int indexX, const int indexY, const int indexZ, int& computedCellIndex) const noexcept
-		{
-			//computedCellIndex=indexX + indexY*width + indexZ*width*height;
-			computedCellIndex=(indexX + indexY*width + indexZ*width*height)*stride;
-			return grid[computedCellIndex];
-		}
-
-		inline
-		void numParticlesAtCellIncrement(const int computedCellIndex) noexcept
-		{
-			grid[computedCellIndex]++;
 		}
 
 		inline
@@ -199,26 +1272,13 @@ namespace FastColDetLib
 		inline
 		const int getStorage () const noexcept { return storage;};
 
-		inline
-		void setCellData(const int cellId, const int laneId, const GridDataType data) noexcept
-		{
-			//grid[cellId + (laneId+1)*stride] = data; // +1: first item is number of particles or indicator of another grid (adaptiveness)
-			grid[cellId + (laneId+1)] = data; // +1: first item is number of particles or indicator of another grid (adaptiveness)
-		}
-
-		inline
-		const GridDataType getCellData(const int cellId, const int laneId) const noexcept
-		{
-			//return grid[cellId + (laneId+1)*stride]; // +1: first item is number of particles or indicator of another grid (adaptiveness)
-			return grid[cellId + (laneId+1)]; // +1: first item is number of particles or indicator of another grid (adaptiveness)
-		}
 
 		std::vector<IParticle<CoordType>*> particles;
+		std::vector<uint64_t> particlesCollisionMask;
 
 		std::map<IParticle<CoordType>*,std::map<IParticle<CoordType>*,bool>> coll;
 
-		// first integer in cell = number of particles. -1: another grid (adaptiveness)
-		std::vector<GridDataType> grid;
+
 		std::map<IParticle<CoordType>*,std::map<IParticle<CoordType>*,bool>> mapping;
 		std::vector<CollisionPair<CoordType>> result;
 		const int width;
@@ -230,7 +1290,7 @@ namespace FastColDetLib
 		const CoordType depthDiv1;
 
 		const int storage;
-		const int stride;
+
 		const CoordType minX;
 		const CoordType minY;
 		const CoordType minZ;
@@ -390,125 +1450,51 @@ protected:
 				const CoordType minX, const CoordType minY, const CoordType minZ,
 				const CoordType maxX, const CoordType maxY, const CoordType maxZ):thrPool(thr)
 		{
+
+			isLeaf = std::make_shared<bool>();
+			*isLeaf=true;
 			depth = std::make_shared<int>();
 
 			*depth=depthPrm;
 
-			if(*depth<8)
-				fields = std::make_shared<FixedGridFields<CoordType>>(4,4,4,63,minX,minY,minZ,maxX,maxY,maxZ);
+			if(*depth<10)
+				fields = std::make_shared<FixedGridFields<CoordType>>(4,4,4,300,minX,minY,minZ,maxX,maxY,maxZ);
 			else
-				fields = std::make_shared<FixedGridFields<CoordType>>(4,4,4,63+5*(*depth),minX,minY,minZ,maxX,maxY,maxZ);
+				fields = std::make_shared<FixedGridFields<CoordType>>(4,4,4,400,minX,minY,minZ,maxX,maxY,maxZ);
 
 			subGrid = std::make_shared<std::vector<AdaptiveGrid<CoordType>>>();
-			fields->clearGrid();
+
 		}
 
-		// compute collision between given particle and the already-prepared static object grid (after add(..) and getCollisions(..))
-		std::set<IParticle<CoordType>*> getDynamicCollisionSetFor(IParticle<CoordType>* particle)
-		{
-			std::set<IParticle<CoordType>*> result;
-			// AABB box of particle
-			const CoordType minx = particle->getMinX();
-			const CoordType miny = particle->getMinY();
-			const CoordType minz = particle->getMinZ();
-
-			const CoordType maxx = particle->getMaxX();
-			const CoordType maxy = particle->getMaxY();
-			const CoordType maxz = particle->getMaxZ();
-
-			const CoordType xDim = fields->maxX - fields->minX;
-			const CoordType yDim = fields->maxY - fields->minY;
-			const CoordType zDim = fields->maxZ - fields->minZ;
-
-			const int w = fields->getWidth();
-			const int h = fields->getHeight();
-			const int d = fields->getDepth();
-			const CoordType wd1 = fields->getWidthDiv1();
-			const CoordType hd1 = fields->getHeightDiv1();
-			const CoordType dd1 = fields->getDepthDiv1();
-			// todo: optimize divisions by multiplications
-			const CoordType stepX = CoordType(1)/(xDim*wd1);
-			const CoordType stepY = CoordType(1)/(yDim*hd1);
-			const CoordType stepZ = CoordType(1)/(zDim*dd1);
 
 
-			const int cellIndexX = std::floor((minx - fields->minX)*stepX);
-			const int cellIndexY = std::floor((miny - fields->minY)*stepY);
-			const int cellIndexZ = std::floor((minz - fields->minZ)*stepZ);
+	    // loads a bit from a 8-byte integer at a position
+	    inline uint64_t loadBitSizeT(const uint64_t & data, const int pos) noexcept
+	    {
+	    	return (data>>pos)&1;
+	    }
 
-			const int cellIndexX2 = std::floor((maxx - fields->minX)*stepX);
-			const int cellIndexY2 = std::floor((maxy - fields->minY)*stepY);
-			const int cellIndexZ2 = std::floor((maxz - fields->minZ)*stepZ);
-
-			for(int zz = cellIndexZ; zz<=cellIndexZ2; zz++)
-				for(int yy = cellIndexY; yy<=cellIndexY2; yy++)
-					for(int xx = cellIndexX; xx<=cellIndexX2; xx++)
-					{
-						if(xx<0 || yy<0 || zz<0 || xx>=w || yy>=h || zz>=d)
-							continue;
-						// num particles in cell
-						int computedCellIndex = 0;
-
-						const int n = fields->numParticlesAtCell(xx, yy, zz, computedCellIndex);
-
-						// if this is a cell
-						if(n>=0)
-						{
-							for(int j=0;j<n;j++)
-							{
-								const int k = fields->getCellData(computedCellIndex,j);
-
-
-
-								const CoordType minx2 = fields->particles[k]->getMinX();
-								const CoordType maxx2 = fields->particles[k]->getMaxX();
-								if(intersectDim(minx, maxx, minx2, maxx2))
-								{
-
-									const CoordType miny2 = fields->particles[k]->getMinY();
-									const CoordType maxy2 = fields->particles[k]->getMaxY();
-									if(intersectDim(miny, maxy, miny2, maxy2))
-									{
-
-										const CoordType minz2 = fields->particles[k]->getMinZ();
-										const CoordType maxz2 = fields->particles[k]->getMaxZ();
-										if(intersectDim(minz, maxz, minz2, maxz2))
-										{
-											result.insert(fields->particles[k]);
-										}
-									}
-								}
-
-
-							}
-
-						}
-						else // if this is a grid
-						{
-
-							const int gridIdx = -n-1;
-
-
-							auto subResult = (*subGrid)[gridIdx].getDynamicCollisionListFor(particle);
-							result.insert(subResult.begin(),subResult.end());
-						}
-					}
-
-			return result;
-		}
+	    // stores a bit in a 8-byte integer at a position
+	    inline void storeBitSizeT(uint64_t & data, const uint64_t value, const int pos) noexcept
+	    {
+	    	data = (value << pos) | (data & ~(((uint64_t)1) << pos));
+	    }
 
 public:
 		AdaptiveGrid(ThreadPool<CoordType> thr,
 				const CoordType minX, const CoordType minY, const CoordType minZ,
 				const CoordType maxX, const CoordType maxY, const CoordType maxZ):thrPool(thr)
 		{
+
+			isLeaf=std::make_shared<bool>();
+			*isLeaf = true;
 			depth = std::make_shared<int>();
 
 			*depth=0;
 
-			fields = std::make_shared<FixedGridFields<CoordType>>(2,2,2,63,minX,minY,minZ,maxX,maxY,maxZ);
+			fields = std::make_shared<FixedGridFields<CoordType>>(4,4,4,100,minX,minY,minZ,maxX,maxY,maxZ);
 			subGrid = std::make_shared<std::vector<AdaptiveGrid<CoordType>>>();
-			fields->clearGrid();
+
 		}
 
 
@@ -520,22 +1506,29 @@ public:
 
 		void clear()
 		{
-			fields->clearGrid();
+			*isLeaf=true;
 			subGrid->clear();
 			fields->particles.clear();
+			fields->particlesCollisionMask.clear();
+		}
+
+
+		template<typename Derived>
+		void add(Derived * particlesPrm, int n)
+		{
+			for(int i=0;i<n;i++)
+				add(particlesPrm + i);
 		}
 
 		// add static particle object pointers to compute all-vs-all comparisons in an optimized way
 		// the generated internal data is also used for static vs dynamic collision checking
 		template<typename Derived>
-		void add(Derived * particlesPrm, int numParticlesToAdd)
+		void add(Derived * particlesPrm)
 		{
 
 			const int w = fields->getWidth();
 			const int h = fields->getHeight();
 			const int d = fields->getDepth();
-
-			const int sto = fields->getStorage();
 			// grid
 			const CoordType xDim = fields->maxX - fields->minX;
 			const CoordType yDim = fields->maxY - fields->minY;
@@ -546,22 +1539,80 @@ public:
 			const CoordType stepY = yDim/h;
 			const CoordType stepZ = zDim/d;
 
-			for(int ii=0;ii<numParticlesToAdd;ii++)
+			const int sto = fields->getStorage();
+			const int nPar = fields->particles.size();
+
+			// if current grid leaf is full, convert it to node with 4x4x4 leaves
+			if(*isLeaf && (nPar == sto))
 			{
-				const int i=fields->particles.size();
+				*isLeaf = false;
 
+				// create leaf nodes (4x4x4=64)
+				subGrid->reserve(64);
+				for(int zz = 0; zz<d; zz++)
+					for(int yy = 0; yy<h; yy++)
+						for(int xx = 0; xx<w; xx++)
+						{
+
+							AdaptiveGrid<CoordType> newGrid(thrPool,*depth+1,fields->minX+stepX*xx,fields->minY+stepY*yy,fields->minZ+stepZ*zz,
+									fields->minX+(stepX)*(xx+1),fields->minY+(stepY)*(yy+1),fields->minZ+(stepZ)*(zz+1));
+
+
+
+							subGrid->push_back(newGrid);
+						}
+
+
+
+
+				for(int ii=0;ii<nPar;ii++)
+				{
+					// AABB box of particle
+					const CoordType minx = fields->particles[ii]->getMinX();
+					const CoordType miny = fields->particles[ii]->getMinY();
+					const CoordType minz = fields->particles[ii]->getMinZ();
+
+					const CoordType maxx = fields->particles[ii]->getMaxX();
+					const CoordType maxy = fields->particles[ii]->getMaxY();
+					const CoordType maxz = fields->particles[ii]->getMaxZ();
+
+					const int cellIndexX = std::floor((minx - fields->minX)/stepX);
+					const int cellIndexY = std::floor((miny - fields->minY)/stepY);
+					const int cellIndexZ = std::floor((minz - fields->minZ)/stepZ);
+
+					const int cellIndexX2 = std::floor((maxx - fields->minX)/stepX);
+					const int cellIndexY2 = std::floor((maxy - fields->minY)/stepY);
+					const int cellIndexZ2 = std::floor((maxz - fields->minZ)/stepZ);
+
+
+					for(int zz = cellIndexZ; zz<=cellIndexZ2; zz++)
+						for(int yy = cellIndexY; yy<=cellIndexY2; yy++)
+							for(int xx = cellIndexX; xx<=cellIndexX2; xx++)
+							{
+								if(xx<0 || yy<0 || zz<0 || xx>=w || yy>=h || zz>=d)
+									continue;
+
+								// overlaps with subgrid, add to it
+								(*subGrid)[xx+yy*4+zz*4*4].add(fields->particles[ii]);
+							}
+				}
+
+				// clear unused particles
+				fields->particles.clear();
+				fields->particlesCollisionMask.clear();
+			}
+
+
+
+			{
 				// AABB box of particle
-				const CoordType minx = (particlesPrm+ii)->getMinX();
-				const CoordType miny = (particlesPrm+ii)->getMinY();
-				const CoordType minz = (particlesPrm+ii)->getMinZ();
+				const CoordType minx = (particlesPrm)->getMinX();
+				const CoordType miny = (particlesPrm)->getMinY();
+				const CoordType minz = (particlesPrm)->getMinZ();
 
-				const CoordType maxx = (particlesPrm+ii)->getMaxX();
-				const CoordType maxy = (particlesPrm+ii)->getMaxY();
-				const CoordType maxz = (particlesPrm+ii)->getMaxZ();
-
-
-
-
+				const CoordType maxx = (particlesPrm)->getMaxX();
+				const CoordType maxy = (particlesPrm)->getMaxY();
+				const CoordType maxz = (particlesPrm)->getMaxZ();
 
 				const int cellIndexX = std::floor((minx - fields->minX)/stepX);
 				const int cellIndexY = std::floor((miny - fields->minY)/stepY);
@@ -570,74 +1621,34 @@ public:
 				const int cellIndexX2 = std::floor((maxx - fields->minX)/stepX);
 				const int cellIndexY2 = std::floor((maxy - fields->minY)/stepY);
 				const int cellIndexZ2 = std::floor((maxz - fields->minZ)/stepZ);
-				bool toCell = false;
+
+				uint64_t maskCellsFilled;
 				// "gather" operations on neighbor cells should be cache-friendly
+
 				for(int zz = cellIndexZ; zz<=cellIndexZ2; zz++)
 					for(int yy = cellIndexY; yy<=cellIndexY2; yy++)
 						for(int xx = cellIndexX; xx<=cellIndexX2; xx++)
 						{
 							if(xx<0 || yy<0 || zz<0 || xx>=w || yy>=h || zz>=d)
 								continue;
-							// num particles in cell
-							int computedCellIndex = 0;
 
-							const int n = fields->numParticlesAtCell(xx, yy, zz, computedCellIndex);
+							storeBitSizeT(maskCellsFilled,1,xx+yy*4+zz*4*4);
 
-							// if this is a cell
-							if(n>=0)
+							if(!*isLeaf)
 							{
-								// if capacity not reached
-								if(n<sto)
-								{
-
-									fields->setCellData(computedCellIndex,n,i);
-									fields->numParticlesAtCellIncrement(computedCellIndex);
-									toCell=true;
-								}
-								else
-								{
-
-
-									const int idx = subGrid->size();
-
-									AdaptiveGrid<CoordType> newGrid(thrPool,*depth+1,fields->minX+stepX*xx,fields->minY+stepY*yy,fields->minZ+stepZ*zz,
-											fields->minX+(stepX)*(xx+1),fields->minY+(stepY)*(yy+1),fields->minZ+(stepZ)*(zz+1));
-									subGrid->push_back(newGrid);
-
-									fields->setCellData(computedCellIndex,-1,-(idx+1));
-
-
-
-									for(int ins = 0; ins<n; ins++)
-									{
-										newGrid.add(fields->particles[fields->getCellData(computedCellIndex,ins)],1);
-									}
-
-
-
-									newGrid.add(particlesPrm+ii,1);
-
-
-
-								}
-							}
-							else // if this is a grid
-							{
-
-								const int gridIdx = -n-1;
-
-
-								(*subGrid)[gridIdx].add(particlesPrm+ii,1);
-
+								(*subGrid)[xx+yy*4+zz*4*4].add(particlesPrm);
 							}
 						}
 
-				if(toCell)
-					fields->particles.push_back(particlesPrm+ii);
-
+				if(maskCellsFilled)
+				{
+					if(*isLeaf)
+					{
+						fields->particlesCollisionMask.push_back(maskCellsFilled);
+						fields->particles.push_back(particlesPrm);
+					}
+				}
 			}
-
-
 		}
 
 
@@ -654,7 +1665,10 @@ public:
 		// thread-safe
 		std::vector<IParticle<CoordType>*> getDynamicCollisionListFor(IParticle<CoordType>* particle)
 		{
-			std::set<IParticle<CoordType>*> result;
+			std::unordered_map<IParticle<CoordType>*,bool> result;
+			const int n2 = fields->particles.size();
+			result.reserve(n2);
+
 			// AABB box of particle
 			const CoordType minx = particle->getMinX();
 			const CoordType miny = particle->getMinY();
@@ -683,62 +1697,67 @@ public:
 			const int cellIndexX2 = std::floor((maxx - fields->minX)/stepX);
 			const int cellIndexY2 = std::floor((maxy - fields->minY)/stepY);
 			const int cellIndexZ2 = std::floor((maxz - fields->minZ)/stepZ);
-
+			uint64_t collisionMask=0;
 			for(int zz = cellIndexZ; zz<=cellIndexZ2; zz++)
 				for(int yy = cellIndexY; yy<=cellIndexY2; yy++)
 					for(int xx = cellIndexX; xx<=cellIndexX2; xx++)
 					{
 						if(xx<0 || yy<0 || zz<0 || xx>=w || yy>=h || zz>=d)
 							continue;
-						// num particles in cell
-						int computedCellIndex = 0;
 
-						const int n = fields->numParticlesAtCell(xx, yy, zz, computedCellIndex);
-
-						// if this is a cell
-						if(n>=0)
+						// if selected cell is a cell
+						// (if parent is leaf, then it is a cell)
+						if(*isLeaf)
 						{
-							for(int j=0;j<n;j++)
-							{
-								const int k = fields->getCellData(computedCellIndex,j);
-
-
-
-								const CoordType minx2 = fields->particles[k]->getMinX();
-								const CoordType maxx2 = fields->particles[k]->getMaxX();
-								if(intersectDim(minx, maxx, minx2, maxx2))
-								{
-
-									const CoordType miny2 = fields->particles[k]->getMinY();
-									const CoordType maxy2 = fields->particles[k]->getMaxY();
-									if(intersectDim(miny, maxy, miny2, maxy2))
-									{
-
-										const CoordType minz2 = fields->particles[k]->getMinZ();
-										const CoordType maxz2 = fields->particles[k]->getMaxZ();
-										if(intersectDim(minz, maxz, minz2, maxz2))
-										{
-											result.insert(fields->particles[k]);
-										}
-									}
-								}
-
-
-							}
-
+							storeBitSizeT(collisionMask,1,xx+yy*4+zz*4*4);
 						}
 						else // if this is a grid
 						{
 
-							const int gridIdx = -n-1;
 
 
-							auto subResult = (*subGrid)[gridIdx].getDynamicCollisionSetFor(particle);
-							result.insert(subResult.begin(),subResult.end());
+							auto subResult = (*subGrid)[xx+yy*4+zz*4*4].getDynamicCollisionListFor(particle);
+
+							for(auto& subr:subResult)
+							{
+								result.emplace(subr,true);
+							}
 						}
 					}
+
+			// if this is a leaf node
+
+			for(int j=0;j<n2;j++)
+			{
+				if(result.find(fields->particles[j])==result.end())
+				if(fields->particlesCollisionMask[j] & collisionMask)
+				{
+
+					const CoordType minx2 = fields->particles[j]->getMinX();
+					const CoordType maxx2 = fields->particles[j]->getMaxX();
+					if(intersectDim(minx, maxx, minx2, maxx2))
+					{
+
+						const CoordType miny2 = fields->particles[j]->getMinY();
+						const CoordType maxy2 = fields->particles[j]->getMaxY();
+						if(intersectDim(miny, maxy, miny2, maxy2))
+						{
+
+							const CoordType minz2 = fields->particles[j]->getMinZ();
+							const CoordType maxz2 = fields->particles[j]->getMaxZ();
+							if(intersectDim(minz, maxz, minz2, maxz2))
+							{
+								result.emplace(fields->particles[j],true);
+							}
+
+						}
+					}
+				}
+
+			}
 			std::vector<IParticle<CoordType>*> resultVec;
-			resultVec.insert(resultVec.end(),result.begin(),result.end());
+			for(auto& res:result)
+				resultVec.push_back(res.first);
 			return resultVec;
 		}
 
@@ -758,101 +1777,111 @@ public:
 
 
 			std::mutex mut;
-			bool completed[64]={false,false,false,false,false,false,false,false};
+			bool completed[64];
+			if((!*isLeaf) && *depth>0)
+			{
+				for(int i=0;i<64;i++)
+					completed[i]=false;
+			}
 			int completedCtr = 0;
 			// "gather" operations on neighbor cells should be cache-friendly
-			for(int zz = 0; zz<d; zz++)
-				for(int yy = 0; yy<h; yy++)
-					for(int xx = 0; xx<w; xx++)
+
+
+			if(!*isLeaf)
 			{
-
-
-				int computedCellIndex0 = 0;
-				const int n = fields->numParticlesAtCell(xx, yy, zz, computedCellIndex0);
-
-				// if a cell
-				if(n>=0)
+				for(int zz = 0; zz<d; zz++)
+					for(int yy = 0; yy<h; yy++)
+						for(int xx = 0; xx<w; xx++)
 				{
-					const int computedCellIndex = computedCellIndex0;
-					if(n<2)
-						continue;
 
-					std::map<IParticle<CoordType>*,std::map<IParticle<CoordType>*,bool>> localMap;
 
-					for(int j=0;j<n-1;j++)
-					{
-						const int k = fields->getCellData(computedCellIndex,j);
-						for(int i=j+1;i<n;i++)
+						// if at specific layer, enable threads
+						if(  (   *(subGrid->data()[xx+yy*4+zz*4*4].isLeaf)   ) && *depth>0)
 						{
+							Cmd<CoordType> cmd;
+							cmd.completed=&completed[completedCtr++];
+							cmd.mapping=&fields->mapping;
+							cmd.mut=&mut;
+							cmd.grid=subGrid->data()+(xx+yy*4+zz*4*4);
+							thrPool.compute(cmd);
+						}
+						else
+						{
+							auto collisions = (subGrid->data()+(xx+yy*4+zz*4*4))->getCollisions();
 
-							const int k2 = fields->getCellData(computedCellIndex,i);
-							if(fields->particles[k]->getId()<fields->particles[k2]->getId())
 							{
-								const CoordType minx = fields->particles[k]->getMinX();
-								const CoordType maxx = fields->particles[k]->getMaxX();
-								const CoordType minx2 = fields->particles[k2]->getMinX();
-								const CoordType maxx2 = fields->particles[k2]->getMaxX();
+
+								for(auto& c:collisions)
+								{
+									fields->mapping[c.getParticle1()][c.getParticle2()]=true;
+								}
+
+							}
+						}
+
+				}
+			}
+
+
+			if(*isLeaf)
+			{
+				std::map<IParticle<CoordType>*,std::map<IParticle<CoordType>*,bool>> localMap;
+
+				const int nMask = fields->particles.size();
+				std::vector<uint64_t> fastTest;
+
+				for(int j=0;j<nMask-1;j++)
+				{
+					const CoordType minx = fields->particles[j]->getMinX();
+					const CoordType maxx = fields->particles[j]->getMaxX();
+					const CoordType miny = fields->particles[j]->getMinY();
+					const CoordType maxy = fields->particles[j]->getMaxY();
+					const CoordType minz = fields->particles[j]->getMinZ();
+					const CoordType maxz = fields->particles[j]->getMaxZ();
+					for(int i=j+1;i<nMask;i++)
+					{
+						// if both AABBs in same cell (64bit collision mask = 4x4x4 on/off mapping)
+						if(fields->particlesCollisionMask[j] & fields->particlesCollisionMask[i])
+						{
+							if(fields->particles[j]->getId()<fields->particles[i]->getId())
+							{
+
+								const CoordType minx2 = fields->particles[i]->getMinX();
+								const CoordType maxx2 = fields->particles[i]->getMaxX();
 								if(intersectDim(minx, maxx, minx2, maxx2))
 								{
-									const CoordType miny = fields->particles[k]->getMinY();
-									const CoordType maxy = fields->particles[k]->getMaxY();
-									const CoordType miny2 = fields->particles[k2]->getMinY();
-									const CoordType maxy2 = fields->particles[k2]->getMaxY();
+
+									const CoordType miny2 = fields->particles[i]->getMinY();
+									const CoordType maxy2 = fields->particles[i]->getMaxY();
 									if(intersectDim(miny, maxy, miny2, maxy2))
 									{
-										const CoordType minz = fields->particles[k]->getMinZ();
-										const CoordType maxz = fields->particles[k]->getMaxZ();
-										const CoordType minz2 = fields->particles[k2]->getMinZ();
-										const CoordType maxz2 = fields->particles[k2]->getMaxZ();
+
+										const CoordType minz2 = fields->particles[i]->getMinZ();
+										const CoordType maxz2 = fields->particles[i]->getMaxZ();
 										if(intersectDim(minz, maxz, minz2, maxz2))
 										{
-											localMap[fields->particles[k]][fields->particles[k2]]=true;
+											localMap[fields->particles[j]][fields->particles[i]]=true;
 										}
 									}
 								}
 							}
 						}
 					}
-
-					{
-						std::lock_guard<std::mutex> lg(mut);
-						for(auto& lm:localMap)
-						{
-							for(auto& lm2:lm.second)
-								fields->mapping[lm.first][lm2.first]=true;
-						}
-					}
 				}
-				else // if a grid
+
+
 				{
-					// if at specific layer, enable threads
-					if(*depth==3)
+					std::lock_guard<std::mutex> lg(mut);
+					for(auto& lm:localMap)
 					{
-						Cmd<CoordType> cmd;
-						cmd.completed=&completed[completedCtr++];
-						cmd.mapping=&fields->mapping;
-						cmd.mut=&mut;
-						cmd.grid=subGrid->data()-n-1;
-						thrPool.compute(cmd);
-					}
-					else
-					{
-						auto collisions = (subGrid->data()-n-1)->getCollisions();
-
-						{
-
-							for(auto& c:collisions)
-							{
-								fields->mapping[c.getParticle1()][c.getParticle2()]=true;
-							}
-
-						}
+						for(auto& lm2:lm.second)
+							fields->mapping[lm.first][lm2.first]=true;
 					}
 				}
 			}
 
 			// if at specific layer, wait for threads
-			if(*depth==3)
+			if((!*isLeaf) && *depth>0)
 			{
 				bool comp = false;
 				while(!comp)
@@ -888,6 +1917,7 @@ private:
 		std::shared_ptr<std::vector<AdaptiveGrid<CoordType>>> subGrid;
 		ThreadPool<CoordType> thrPool;
 		std::shared_ptr<int> depth;
+		std::shared_ptr<bool> isLeaf;
 
 	};
 
