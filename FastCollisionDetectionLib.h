@@ -134,6 +134,7 @@ private:
 			childNodeCount.reset();
 			index.reset();
 			indexParticle.reset();
+			orderParticle.reset();
 			minX.reset();
 			maxX.reset();
 			minY.reset();
@@ -158,6 +159,7 @@ private:
 		Memory<char> childNodeCount;
 		Memory<int> index;
 		Memory<int> indexParticle;
+		Memory<int> orderParticle;
 		Memory<float> nodeMinX;
 		Memory<float> nodeMinY;
 		Memory<float> nodeMinZ;
@@ -172,12 +174,8 @@ private:
 		Memory<float> maxZ;
 
 		Memory<int> idTmp[8];
-		Memory<float> minxTmp[8];
-		Memory<float> minyTmp[8];
-		Memory<float> minzTmp[8];
-		Memory<float> maxxTmp[8];
-		Memory<float> maxyTmp[8];
-		Memory<float> maxzTmp[8];
+		Memory<int> orderTmp[8];
+
 
 	};
 
@@ -291,20 +289,7 @@ private:
 			fields->mem.nodeCollisionMask.set(fields->mem.nodeCollisionMask.allocate(1),0);
 		}
 
-		inline
-		void addParticleDirectAllocatedAABB(const int id, const float minx, const float miny, const float minz,
-				const float maxx, const float maxy, const float maxz,
-				int nodeOffset = 0, const int allocOffs=0, const unsigned char nodeMask=0)
-		{
-			fields->mem.indexParticle.set(allocOffs,id);
-			fields->mem.cellCollisionMask.set(allocOffs,nodeMask);
-			fields->mem.maxX.set(allocOffs,maxx);
-			fields->mem.maxY.set(allocOffs,maxy);
-			fields->mem.maxZ.set(allocOffs,maxz);
-			fields->mem.minX.set(allocOffs,minx);
-			fields->mem.minY.set(allocOffs,miny);
-			fields->mem.minZ.set(allocOffs,minz);
-		}
+
 
 		void addParticleDirectAABB(const int id, const float minx, const float miny, const float minz,
 				const float maxx, const float maxy, const float maxz,
@@ -312,6 +297,7 @@ private:
 		{
 			const int particleStart = fields->mem.index.get(nodeOffset);
 			const int pId = fields->mem.indexParticle.allocate(1);
+			const int oId = fields->mem.orderParticle.allocate(1);
 			const int maskId = fields->mem.cellCollisionMask.allocate(1);
 			const int maxXId = fields->mem.maxX.allocate(1);
 			const int maxYId = fields->mem.maxY.allocate(1);
@@ -320,6 +306,7 @@ private:
 			const int minYId = fields->mem.minY.allocate(1);
 			const int minZId = fields->mem.minZ.allocate(1);
 			fields->mem.indexParticle.set(pId,id);
+			fields->mem.orderParticle.set(oId,oId);
 			fields->mem.cellCollisionMask.set(maskId,0);
 			fields->mem.maxX.set(maxXId,maxx);
 			fields->mem.maxY.set(maxYId,maxy);
@@ -336,86 +323,7 @@ private:
 			}
 		}
 
-		void addParticleAABB(const int id, const float minx, const float miny, const float minz,
-				const float maxx, const float maxy, const float maxz,
-				int nodeOffset = 0, const bool markStart = false)
-		{
 
-			// get current node's information
-			const int particleStart = fields->mem.index.get(nodeOffset);
-			const int numParticle = fields->mem.index.get(nodeOffset+1);
-			const int childNodeStart = fields->mem.index.get(nodeOffset+2);
-
-			const int indexBoundMinX = fields->mem.index.get(nodeOffset+3);
-			const int indexBoundMinY = fields->mem.index.get(nodeOffset+4);
-			const int indexBoundMinZ = fields->mem.index.get(nodeOffset+5);
-
-			const int indexCellWidthInv = fields->mem.index.get(nodeOffset+6);
-			const int indexCellHeightInv = fields->mem.index.get(nodeOffset+7);
-			const int indexCellDepthInv = fields->mem.index.get(nodeOffset+8);
-
-			const float minCornerX = fields->mem.nodeMinX.get(indexBoundMinX);
-			const float minCornerY = fields->mem.nodeMinY.get(indexBoundMinY);
-			const float minCornerZ = fields->mem.nodeMinZ.get(indexBoundMinZ);
-
-			const float cellWidthInv = fields->mem.nodeInvWidth.get(indexCellWidthInv);
-			const float cellHeightInv = fields->mem.nodeInvHeight.get(indexCellHeightInv);
-			const float cellDepthInv = fields->mem.nodeInvDepth.get(indexCellDepthInv);
-
-			const int indexStartX = std::floor((minx - minCornerX)*cellWidthInv);
-			const int indexEndX = std::floor((maxx - minCornerX)*cellWidthInv);
-
-			const int indexStartY = std::floor((miny - minCornerY)*cellHeightInv);
-			const int indexEndY = std::floor((maxy - minCornerY)*cellHeightInv);
-
-			const int indexStartZ = std::floor((minz - minCornerZ)*cellDepthInv);
-			const int indexEndZ = std::floor((maxz - minCornerZ)*cellDepthInv);
-
-
-			// prepare cell indicator mask (1 bit = has object, 0 bit = empty))
-			unsigned char maskCellsFilled=0;
-			for(int k=indexStartZ; k<=indexEndZ; k++)
-			{
-				if(k<0 || k>=2)
-					continue;
-				for(int j=indexStartY; j<=indexEndY; j++)
-				{
-					if(j<0 || j>=2)
-						continue;
-					for(int i=indexStartX; i<=indexEndX; i++)
-					{
-						if(i<0 || i>=2)
-							continue;
-
-						storeBit(maskCellsFilled,1,i+j*2+k*4);
-
-					}
-				}
-			}
-
-			const int pId = fields->mem.indexParticle.allocate(1);
-			const int maskId = fields->mem.cellCollisionMask.allocate(1);
-			const int maxXId = fields->mem.maxX.allocate(1);
-			const int maxYId = fields->mem.maxY.allocate(1);
-			const int maxZId = fields->mem.maxZ.allocate(1);
-			const int minXId = fields->mem.minX.allocate(1);
-			const int minYId = fields->mem.minY.allocate(1);
-			const int minZId = fields->mem.minZ.allocate(1);
-			fields->mem.index.set(nodeOffset+2,0);
-			fields->mem.indexParticle.set(pId,id);
-			fields->mem.cellCollisionMask.set(maskId,maskCellsFilled);
-			fields->mem.maxX.set(maxXId,maxx);
-			fields->mem.maxY.set(maxYId,maxy);
-			fields->mem.maxZ.set(maxZId,maxz);
-			fields->mem.minX.set(minXId,minx);
-			fields->mem.minY.set(minYId,miny);
-			fields->mem.minZ.set(minZId,minz);
-			fields->mem.index.set(nodeOffset+1,numParticle+1);
-			if(pId==0 || markStart)
-			{
-				fields->mem.index.set(particleStart,pId);
-			}
-		}
 
 
 		inline
@@ -620,7 +528,7 @@ private:
 					const float minCornerX = fields->mem.nodeMinX.get(indexBoundMinX);
 					const float minCornerY = fields->mem.nodeMinY.get(indexBoundMinY);
 					const float minCornerZ = fields->mem.nodeMinZ.get(indexBoundMinZ);
-
+					std::cout<<task.nodePointer<<" ? "<<indexBoundMinX<<" ? "<<indexCellWidthInv<<std::endl;
 					const float cellWidthInv = fields->mem.nodeInvWidth.get(indexCellWidthInv);
 					const float cellHeightInv = fields->mem.nodeInvHeight.get(indexCellHeightInv);
 					const float cellDepthInv = fields->mem.nodeInvDepth.get(indexCellDepthInv);
@@ -681,26 +589,26 @@ private:
 			for(int i=0;i<sz;i++)
 			{
 				const int index = particlesToCompute[i].particlePointer;
-				const int partId = fields->mem.indexParticle.get(index);
 
-
+				const int orderId = fields->mem.orderParticle.get(index);
+				const int partId = fields->mem.indexParticle.get(orderId);
 				if(fastSet.test(partId))
 				{
 
 
 
-						const float minX = fields->mem.minX.get(index);
-						const float maxX = fields->mem.maxX.get(index);
+						const float minX = fields->mem.minX.get(orderId);
+						const float maxX = fields->mem.maxX.get(orderId);
 
 
 						if(intersectDim(minx, maxx, minX, maxX))
 						{
-							const float minY = fields->mem.minY.get(index);
-							const float maxY = fields->mem.maxY.get(index);
+							const float minY = fields->mem.minY.get(orderId);
+							const float maxY = fields->mem.maxY.get(orderId);
 							if(intersectDim(miny, maxy, minY, maxY))
 							{
-								const float minZ = fields->mem.minZ.get(index);
-								const float maxZ = fields->mem.maxZ.get(index);
+								const float minZ = fields->mem.minZ.get(orderId);
+								const float maxZ = fields->mem.maxZ.get(orderId);
 								if(intersectDim(minz, maxz, minZ, maxZ))
 								{
 									result.push_back(partId);
@@ -778,13 +686,14 @@ private:
 				for(int i=0;i<n-1;i++)
 				{
 					const int index = ptr+i;
-					const int partId = fields->mem.indexParticle.get(index);
-					const float minx = fields->mem.minX.get(index);
-					const float maxx = fields->mem.maxX.get(index);
-					const float miny = fields->mem.minY.get(index);
-					const float maxy = fields->mem.maxY.get(index);
-					const float minz = fields->mem.minZ.get(index);
-					const float maxz = fields->mem.maxZ.get(index);
+					const int orderId= fields->mem.orderParticle.get(index);
+					const int partId = fields->mem.indexParticle.get(orderId);
+					const float minx = fields->mem.minX.get(orderId);
+					const float maxx = fields->mem.maxX.get(orderId);
+					const float miny = fields->mem.minY.get(orderId);
+					const float maxy = fields->mem.maxY.get(orderId);
+					const float minz = fields->mem.minZ.get(orderId);
+					const float maxz = fields->mem.maxZ.get(orderId);
 					auto& map = fastSet[partId];
 					for(int j=i;j<n;j++)
 					{
@@ -792,25 +701,27 @@ private:
 
 						const int index2 = ptr+j;
 
-						const int partId2 = fields->mem.indexParticle.get(index2);
+
+						const int orderId2 = fields->mem.orderParticle.get(index2);
+						const int partId2 = fields->mem.indexParticle.get(orderId2);
 						if(partId>=partId2 || !(fields->mem.cellCollisionMask.get(index) & fields->mem.cellCollisionMask.get(index2)))
 							continue;
 						if(map.test(partId2))
 						{
 
-							const float minX = fields->mem.minX.get(index2);
-							const float maxX = fields->mem.maxX.get(index2);
+							const float minX = fields->mem.minX.get(orderId2);
+							const float maxX = fields->mem.maxX.get(orderId2);
 
 							if(intersectDim(minx, maxx, minX, maxX))
 							{
 
-								const float minY = fields->mem.minY.get(index2);
-								const float maxY = fields->mem.maxY.get(index2);
+								const float minY = fields->mem.minY.get(orderId2);
+								const float maxY = fields->mem.maxY.get(orderId2);
 								if(intersectDim(miny, maxy, minY, maxY))
 								{
 
-									const float minZ = fields->mem.minZ.get(index2);
-									const float maxZ = fields->mem.maxZ.get(index2);
+									const float minZ = fields->mem.minZ.get(orderId2);
+									const float maxZ = fields->mem.maxZ.get(orderId2);
 									if(intersectDim(minz, maxz, minZ, maxZ))
 									{
 										result.push_back(std::pair<int,int>(partId,partId2));
@@ -852,7 +763,7 @@ private:
 
 			while(nodeOffset <= maxNodeOffset)
 			{
-
+				ctr++;
 
 				int ctrTmp[8]={0,0,0,0,0,0,0,0};
 
@@ -870,7 +781,7 @@ private:
 
 				if(numParticle > testParticleLimit)
 				{
-					ctr++;
+
 
 					{
 
@@ -880,21 +791,9 @@ private:
 								{
 									// allocate node
 									const int index0 = xx+yy*2+zz*4;
-									fields->mem.idTmp[index0].reset();
-									fields->mem.minxTmp[index0].reset();
-									fields->mem.minyTmp[index0].reset();
-									fields->mem.minzTmp[index0].reset();
-									fields->mem.maxxTmp[index0].reset();
-									fields->mem.maxyTmp[index0].reset();
-									fields->mem.maxzTmp[index0].reset();
-									fields->mem.idTmp[index0].allocate(numParticle);
-									fields->mem.minxTmp[index0].allocate(numParticle);
-									fields->mem.minyTmp[index0].allocate(numParticle);
-									fields->mem.minzTmp[index0].allocate(numParticle);
-									fields->mem.maxxTmp[index0].allocate(numParticle);
-									fields->mem.maxyTmp[index0].allocate(numParticle);
-									fields->mem.maxzTmp[index0].allocate(numParticle);
 
+									fields->mem.orderTmp[index0].reset();
+									fields->mem.orderTmp[index0].allocate(numParticle);
 								}
 					}
 
@@ -906,13 +805,14 @@ private:
 
 						for(int ii=0;ii<numParticle;ii++)
 						{
-							const int idParticle = fields->mem.indexParticle.get(particleStart+ii);
-							const float minx = fields->mem.minX.get(particleStart+ii);
-							const float miny = fields->mem.minY.get(particleStart+ii);
-							const float minz = fields->mem.minZ.get(particleStart+ii);
-							const float maxx = fields->mem.maxX.get(particleStart+ii);
-							const float maxy = fields->mem.maxY.get(particleStart+ii);
-							const float maxz = fields->mem.maxZ.get(particleStart+ii);
+
+							const int orderParticle = fields->mem.orderParticle.get(particleStart+ii);
+							const float minx = fields->mem.minX.get(orderParticle);
+							const float miny = fields->mem.minY.get(orderParticle);
+							const float minz = fields->mem.minZ.get(orderParticle);
+							const float maxx = fields->mem.maxX.get(orderParticle);
+							const float maxy = fields->mem.maxY.get(orderParticle);
+							const float maxz = fields->mem.maxZ.get(orderParticle);
 
 							const int indexStartX = std::floor((minx - minCornerX)*cellWidthInv);
 							const int indexEndX = std::floor((maxx - minCornerX)*cellWidthInv);
@@ -941,14 +841,7 @@ private:
 
 										const int index0 = i+j*2+k*4;
 
-
-										fields->mem.idTmp[index0].set(ctrTmp[index0],idParticle);
-										fields->mem.minxTmp[index0].set(ctrTmp[index0],minx);
-										fields->mem.minyTmp[index0].set(ctrTmp[index0],miny);
-										fields->mem.minzTmp[index0].set(ctrTmp[index0],minz);
-										fields->mem.maxxTmp[index0].set(ctrTmp[index0],maxx);
-										fields->mem.maxyTmp[index0].set(ctrTmp[index0],maxy);
-										fields->mem.maxzTmp[index0].set(ctrTmp[index0],maxz);
+										fields->mem.orderTmp[index0].set(ctrTmp[index0],orderParticle);
 										ctrTmp[index0]++;
 									}
 								}
@@ -1015,52 +908,13 @@ private:
 									storeBit(nodeMask,1,index0);
 									fields->mem.nodeCollisionMask.set(nodeMaskIndex,nodeMask);
 
-									const int allocOffset = fields->mem.indexParticle.allocate(sz);
+									//const int allocOffset = fields->mem.indexParticle.allocate(sz);
+									const int allocOffset = fields->mem.orderParticle.allocate(sz);
 									fields->mem.cellCollisionMask.allocate(sz);
-									fields->mem.maxX.allocate(sz);
-									fields->mem.maxY.allocate(sz);
-									fields->mem.maxZ.allocate(sz);
-									fields->mem.minX.allocate(sz);
-									fields->mem.minY.allocate(sz);
-									fields->mem.minZ.allocate(sz);
 
+									//fields->mem.indexParticle.readFrom(fields->mem.idTmp[index0],0,allocOffset,sz);
+									fields->mem.orderParticle.readFrom(fields->mem.orderTmp[index0],0,allocOffset,sz);
 
-									{
-
-										//for(int ii=0;ii<sz;ii++)
-										{
-											int allocOffs = allocOffset/*+ii*/;
-											//int id = fields->mem.idTmp[index0].get(ii);
-											fields->mem.indexParticle.readFrom(fields->mem.idTmp[index0],0,allocOffs,sz);
-											//fields->mem.cellCollisionMask.readFrom(allocOffs,nodeMask);
-
-
-
-
-
-											fields->mem.maxX.readFrom(fields->mem.maxxTmp[index0],0,allocOffs,sz);
-											fields->mem.maxY.readFrom(fields->mem.maxyTmp[index0],0,allocOffs,sz);
-											fields->mem.maxZ.readFrom(fields->mem.maxzTmp[index0],0,allocOffs,sz);
-											fields->mem.minX.readFrom(fields->mem.minxTmp[index0],0,allocOffs,sz);
-											fields->mem.minY.readFrom(fields->mem.minyTmp[index0],0,allocOffs,sz);
-											fields->mem.minZ.readFrom(fields->mem.minzTmp[index0],0,allocOffs,sz);
-
-
-
-
-
-											/*
-											addParticleDirectAllocatedAABB(fields->mem.idTmp[index0].get(ii),
-													fields->mem.minxTmp[index0].get(ii),
-													fields->mem.minyTmp[index0].get(ii),
-													fields->mem.minzTmp[index0].get(ii),
-													fields->mem.maxxTmp[index0].get(ii),
-													fields->mem.maxyTmp[index0].get(ii),
-													fields->mem.maxzTmp[index0].get(ii),
-													particleStartCur, allocOffset+ii,nodeMask);
-													*/
-										}
-									}
 
 									fields->mem.index.set(particleStartCur,allocOffset);
 									fields->mem.index.set(numParticleCur,sz);
@@ -1086,13 +940,14 @@ private:
 					for(int i=0;i<numParticle;i++)
 					{
 
-						const int idParticle = fields->mem.indexParticle.get(particleStart+i);
-						const float minx = fields->mem.minX.get(particleStart+i);
-						const float miny = fields->mem.minY.get(particleStart+i);
-						const float minz = fields->mem.minZ.get(particleStart+i);
-						const float maxx = fields->mem.maxX.get(particleStart+i);
-						const float maxy = fields->mem.maxY.get(particleStart+i);
-						const float maxz = fields->mem.maxZ.get(particleStart+i);
+
+						const int orderParticle = fields->mem.orderParticle.get(particleStart+i);
+						const float minx = fields->mem.minX.get(orderParticle);
+						const float miny = fields->mem.minY.get(orderParticle);
+						const float minz = fields->mem.minZ.get(orderParticle);
+						const float maxx = fields->mem.maxX.get(orderParticle);
+						const float maxy = fields->mem.maxY.get(orderParticle);
+						const float maxz = fields->mem.maxZ.get(orderParticle);
 
 						const int indexStartX = std::floor((minx - minCornerX)*cellWidthInv);
 						const int indexEndX = std::floor((maxx - minCornerX)*cellWidthInv);
@@ -1146,6 +1001,7 @@ private:
 				}
 			}
 
+			std::cout<<"node: "<<ctr<<std::endl;
 
 
 		}
