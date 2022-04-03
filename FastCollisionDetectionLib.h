@@ -638,7 +638,7 @@ namespace FastColDetLib
 			const int minYId = fields->mem.minY.allocate(numParticlesToAdd);
 			const int minZId = fields->mem.minZ.allocate(numParticlesToAdd);
 			fields->mem.index.set(1,fields->mem.index.get(1)+numParticlesToAdd);
-			std::cout<<pId<<" "<<oId<<" "<<std::endl;
+
 			for(int i=0;i<numParticlesToAdd;i++)
 			{
 
@@ -1247,7 +1247,7 @@ namespace FastColDetLib
 				}
 			}
 
-			std::cout<<"node: "<<ctr<<std::endl;
+
 
 
 		}
