@@ -294,6 +294,7 @@ namespace FastColDetLib
 			nodeInvWidth.reset();
 			nodeInvHeight.reset();
 			nodeInvDepth.reset();
+			leafOffset.reset();
 		}
 
 
@@ -324,6 +325,7 @@ namespace FastColDetLib
 		Memory<std::pair<int,int>> allPairsColl;
 
 		Memory<FastUnique<int32_t, testParticleLimit>> allPairsCollmapping;
+		Memory<int> leafOffset;
 
 	};
 
@@ -541,7 +543,7 @@ namespace FastColDetLib
 
 
 			for(int i=0;i<16;i++)
-				result[i] = (tileId1[i] < tileId2[i]);
+				result[i] =  (tileId1[i] < tileId2[i]);
 
 			for(int i=0;i<16;i++)
 				result[i] = result[i] &&
@@ -701,19 +703,20 @@ namespace FastColDetLib
 
 
 				const int pointer = fields->mem.index.get(task.nodePointer+2);
-				const int numChildNodes = fields->mem.childNodeCount.get(task.nodePointer/3);
+				const int npdiv3 = task.nodePointer/3;
+				const int numChildNodes = fields->mem.childNodeCount.get(npdiv3);
 
 				// if this is not a leaf node, traverse all child nodes (they are sparse, so may be less than 8(8bit mask) or 64(64 bit mask))
 				if(pointer<0)
 				{
 					// get current node's information
-					const float minCornerX = fields->mem.nodeMinX.get(task.nodePointer/3);
-					const float minCornerY = fields->mem.nodeMinY.get(task.nodePointer/3);
-					const float minCornerZ = fields->mem.nodeMinZ.get(task.nodePointer/3);
+					const float minCornerX = fields->mem.nodeMinX.get(npdiv3);
+					const float minCornerY = fields->mem.nodeMinY.get(npdiv3);
+					const float minCornerZ = fields->mem.nodeMinZ.get(npdiv3);
 
-					const float cellWidthInv = fields->mem.nodeInvWidth.get(task.nodePointer/3);
-					const float cellHeightInv = fields->mem.nodeInvHeight.get(task.nodePointer/3);
-					const float cellDepthInv = fields->mem.nodeInvDepth.get(task.nodePointer/3);
+					const float cellWidthInv = fields->mem.nodeInvWidth.get(npdiv3);
+					const float cellHeightInv = fields->mem.nodeInvHeight.get(npdiv3);
+					const float cellDepthInv = fields->mem.nodeInvDepth.get(npdiv3);
 
 
 					const int indexStartX = std::floor((minx - minCornerX)*cellWidthInv);
@@ -812,7 +815,7 @@ namespace FastColDetLib
 								const float maxZ = fields->mem.maxZ.get(orderId);
 								if(intersectDim(minz, maxz, minZ, maxZ))
 								{
-									result.push_back(partId);
+
 									fastSet.iterateSet(partId);
 								}
 							}
@@ -820,15 +823,15 @@ namespace FastColDetLib
 
 				}
 			}
-
+			const int fsz = fastSet.size();
+			for(int i=0;i<fsz;i++)
+			{
+				result.push_back(fastSet.get(i));
+			}
 			return result;
 		}
 
-		struct PtrN
-		{
-			int ptr;
-			int n;
-		};
+
 
 
 
@@ -851,259 +854,162 @@ namespace FastColDetLib
 			fields->mem.allPairsColl.reset();
 			std::vector<std::pair<int,int>> result;
 			//result.reserve(100000);
-			std::stack<NodeTask> nodesToCompute;
-			std::vector<PtrN> ptrn;
 
 
-			// push root node to work queue
-			nodesToCompute.push(NodeTask(0));
+			const int numLeaf = fields->mem.leafOffset.size();
 
-
-
-			// traverse all colliding sparse cells
-			while(!nodesToCompute.empty() /* stack>=0 */)
-			{
-				NodeTask task = nodesToCompute.top();
-				nodesToCompute.pop();
-
-
-
-				const int pointer = fields->mem.index.get(task.nodePointer+2);
-				const int numChildNodes = fields->mem.childNodeCount.get(task.nodePointer/3);
-
-				// if this is not a leaf node, traverse all child nodes (they are sparse, so may be less than 8(8bit mask) or 64(64 bit mask))
-				if(pointer<0)
-				{
-
-
-
-					const int nodeOffset = -pointer-1;
-					for(int i=0;i<numChildNodes;i++)
-					{
-						nodesToCompute.push(NodeTask(nodeOffset+i*3));
-					}
-				}
-				else
-				{
-					// this is leaf node
-
-					const int ptr = fields->mem.index.get(task.nodePointer);
-					const int n = fields->mem.index.get(task.nodePointer+1);
-
-					ptrn.push_back({ptr,n});
-				}
-			}
-
-
-
-
-
-
-
-
-			// todo: parallelize simd
-			const int sz = ptrn.size();
-			for(int k=0;k<sz;k++)
+			for(int leaf=0;leaf<numLeaf;leaf++)
 			{
 
-				const int ptr = ptrn[k].ptr;
-				const int n = ptrn[k].n;
-
-				alignas(32)
-				int index[testParticleLimit];
-
-				alignas(32)
-				int orderId[testParticleLimit];
-
-				alignas(32)
-				int partId[testParticleLimit];
-
-				alignas(32)
-				float minx[testParticleLimit];
-
-				alignas(32)
-				float miny[testParticleLimit];
-
-				alignas(32)
-				float minz[testParticleLimit];
-
-				alignas(32)
-				float maxx[testParticleLimit];
-
-				alignas(32)
-				float maxy[testParticleLimit];
-
-				alignas(32)
-				float maxz[testParticleLimit];
-				constexpr int simd = 4;
-				constexpr int simd1 = simd-1;
-				const int n8 = n-(n&simd1);
-				for(int i=0;i<n8;i+=simd)
 				{
-					for(int j=0;j<simd;j++)
-						index[i+j]   = ptr + i + j;
-					for(int j=0;j<simd;j++)
-						orderId[i+j] = fields->mem.orderParticle.get(index[i+j]);
-					for(int j=0;j<simd;j++)
-						partId[i+j]  = fields->mem.indexParticle.get(orderId[i+j]);
-					for(int j=0;j<simd;j++)
-						minx[i+j]    = fields->mem.minX.get(orderId[i+j]);
-					for(int j=0;j<simd;j++)
-						miny[i+j]    = fields->mem.minY.get(orderId[i+j]);
-					for(int j=0;j<simd;j++)
-						minz[i+j]    = fields->mem.minZ.get(orderId[i+j]);
-					for(int j=0;j<simd;j++)
-						maxx[i+j]    = fields->mem.maxX.get(orderId[i+j]);
-					for(int j=0;j<simd;j++)
-						maxy[i+j]    = fields->mem.maxY.get(orderId[i+j]);
-					for(int j=0;j<simd;j++)
-						maxz[i+j]    = fields->mem.maxZ.get(orderId[i+j]);
 
-				}
+					const int leafOfs = fields->mem.leafOffset.get(leaf);
+					const int ptr = fields->mem.index.get(leafOfs);
+					const int n = fields->mem.index.get(leafOfs+1);
 
-				for(int i=n8;i<n;i++)
-				{
-						index[i]   = ptr + i;
-						orderId[i] = fields->mem.orderParticle.get(index[i]);
-						partId[i]  = fields->mem.indexParticle.get(orderId[i]);
-						minx[i]    = fields->mem.minX.get(orderId[i]);
-						miny[i]    = fields->mem.minY.get(orderId[i]);
-						minz[i]    = fields->mem.minZ.get(orderId[i]);
-						maxx[i]    = fields->mem.maxX.get(orderId[i]);
-						maxy[i]    = fields->mem.maxY.get(orderId[i]);
-						maxz[i]    = fields->mem.maxZ.get(orderId[i]);
-				}
-
-				for(int i=n;i<testParticleLimit;i++)
-				{
-					index[i]   = -1;
-					orderId[i]   = -1;
-					partId[i]   = -1;
-					minx[i] = 1000000000000000000.0f;
-					miny[i] = 1000000000000000000.0f;
-					minz[i] = 1000000000000000000.0f;
-					maxx[i] = 1000000000000000000.0f;
-					maxy[i] = 1000000000000000000.0f;
-					maxz[i] = 1000000000000000000.0f;
-				}
-
-
-				alignas(32)
-				int mat[testParticleLimit];
-
-				for(int i=0;i<testParticleLimit;i++)
-				{
-					mat[i]=0;
-				}
-
-
-
-				// SIMD computation (tiled computing)
-
-				if(true)
-				{
 					alignas(32)
-					int out[16]={
-							0,0,0,0,
-							0,0,0,0,
-							0,0,0,0,
-							0,0,0,0
-					};
+					int index[testParticleLimit];
 
-					for(int i=0;i<testParticleLimit-simd;i+=simd)
+					alignas(32)
+					int orderId[testParticleLimit];
+
+					alignas(32)
+					int partId[testParticleLimit];
+
+					alignas(32)
+					float minx[testParticleLimit];
+
+					alignas(32)
+					float miny[testParticleLimit];
+
+					alignas(32)
+					float minz[testParticleLimit];
+
+					alignas(32)
+					float maxx[testParticleLimit];
+
+					alignas(32)
+					float maxy[testParticleLimit];
+
+					alignas(32)
+					float maxz[testParticleLimit];
+					constexpr int simd = 4;
+					constexpr int simd1 = simd-1;
+					const int n8 = n-(n&simd1);
+					for(int i=0;i<n8;i+=simd)
 					{
-						if(i+simd>=n) break;
+						for(int j=0;j<simd;j++)
+							index[i+j]   = ptr + i + j;
+						for(int j=0;j<simd;j++)
+							orderId[i+j] = fields->mem.orderParticle.get(index[i+j]);
+						for(int j=0;j<simd;j++)
+							partId[i+j]  = fields->mem.indexParticle.get(orderId[i+j]);
+						for(int j=0;j<simd;j++)
+							minx[i+j]    = fields->mem.minX.get(orderId[i+j]);
+						for(int j=0;j<simd;j++)
+							miny[i+j]    = fields->mem.minY.get(orderId[i+j]);
+						for(int j=0;j<simd;j++)
+							minz[i+j]    = fields->mem.minZ.get(orderId[i+j]);
+						for(int j=0;j<simd;j++)
+							maxx[i+j]    = fields->mem.maxX.get(orderId[i+j]);
+						for(int j=0;j<simd;j++)
+							maxy[i+j]    = fields->mem.maxY.get(orderId[i+j]);
+						for(int j=0;j<simd;j++)
+							maxz[i+j]    = fields->mem.maxZ.get(orderId[i+j]);
 
-						FastUnique<int32_t, testParticleLimit> * map[simd] = {
-								fields->mem.allPairsCollmapping.getPtr(partId[i]),
-								fields->mem.allPairsCollmapping.getPtr(partId[i+1]),
-								fields->mem.allPairsCollmapping.getPtr(partId[i+2]),
-								fields->mem.allPairsCollmapping.getPtr(partId[i+3])
+					}
+
+					for(int i=n8;i<n;i++)
+					{
+							index[i]   = ptr + i;
+							orderId[i] = fields->mem.orderParticle.get(index[i]);
+							partId[i]  = fields->mem.indexParticle.get(orderId[i]);
+							minx[i]    = fields->mem.minX.get(orderId[i]);
+							miny[i]    = fields->mem.minY.get(orderId[i]);
+							minz[i]    = fields->mem.minZ.get(orderId[i]);
+							maxx[i]    = fields->mem.maxX.get(orderId[i]);
+							maxy[i]    = fields->mem.maxY.get(orderId[i]);
+							maxz[i]    = fields->mem.maxZ.get(orderId[i]);
+					}
+
+					for(int i=n;i<testParticleLimit;i++)
+					{
+						index[i]   = -1;
+						orderId[i]   = -1;
+						partId[i]   = -1;
+						minx[i] = 1000000000000000000.0f;
+						miny[i] = 1000000000000000000.0f;
+						minz[i] = 1000000000000000000.0f;
+						maxx[i] = 1000000000000000000.0f;
+						maxy[i] = 1000000000000000000.0f;
+						maxz[i] = 1000000000000000000.0f;
+					}
+
+
+
+					// SIMD computation (tiled computing)
+
+					if(true)
+					{
+						alignas(32)
+						int out[16]={
+								0,0,0,0,
+								0,0,0,0,
+								0,0,0,0,
+								0,0,0,0
 						};
 
-						for(int j=i;j<testParticleLimit;j+=simd)
+						for(int i=0;i<testParticleLimit-simd;i+=simd)
 						{
-							// 0v0, 0v1, 0v2, 0v3,
-							// 1v0, 1v1, 1v2, 1v3,
-							// 2v0, 2v1, 2v2, 2v3,
-							// 3v0, 3v1, 3v2, 3v3,
+							if(i>=n)
+								break;
 
-							comp4vs4(	partId+i, partId+j,
-										minx+i, minx+j,
-										miny+i, miny+j,
-										minz+i, minz+j,
-										maxx+i, maxx+j,
-										maxy+i, maxy+j,
-										maxz+i, maxz+j,
-										out
-							);
+							FastUnique<int32_t, testParticleLimit> * map[simd] = {
+									partId[i]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i]):nullptr,
+									partId[i+1]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+1]):nullptr,
+									partId[i+2]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+2]):nullptr,
+									partId[i+3]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+3]):nullptr
+							};
 
-							for(int k=0;k<16;k++)
+							for(int j=i;j<testParticleLimit;j+=simd)
 							{
-								const int id1 = i+(k&3);
-								const int id2 = j+(k>>2);
-								if(out[k] && partId[id1]>=0 && partId[id2]>=0)
+								if(j>=n)
+									break;
+								// 0v0, 0v1, 0v2, 0v3,
+								// 1v0, 1v1, 1v2, 1v3,
+								// 2v0, 2v1, 2v2, 2v3,
+								// 3v0, 3v1, 3v2, 3v3,
+
+								comp4vs4(	partId+i, partId+j,
+											minx+i, minx+j,
+											miny+i, miny+j,
+											minz+i, minz+j,
+											maxx+i, maxx+j,
+											maxy+i, maxy+j,
+											maxz+i, maxz+j,
+											out
+								);
+
+								for(int k=0;k<16;k++)
 								{
-									//FastUnique<int32_t, testParticleLimit>& map = fields->mem.allPairsCollmapping.getRef(partId[id1]);
-									map[k&3]->insert(partId[id2]);
+									const int k3 = k&3;
+									const int id1 = i+k3;
+									const int id2 = j+(k>>2);
+									if(out[k]/* && partId[id1]>=0 && partId[id2]>=0*/)
+									{
+										//FastUnique<int32_t, testParticleLimit>& map = fields->mem.allPairsCollmapping.getRef(partId[id1]);
+										if(map[k3])
+											map[k3]->insert(partId[id2]);
+									}
 								}
 							}
 						}
 					}
-				}
-
-
-
-				/*
-				for(int i=0;i<n;i++)
-				{
-					FastUnique<int32_t, testParticleLimit>& map = fields->mem.allPairsCollmapping.getRef(orderId[i]);
-
-						const int pId = partId[i];
-						const float minx0 = minx[i];
-						const float miny0 = miny[i];
-						const float minz0 = minz[i];
-						const float maxx0 = maxx[i];
-						const float maxy0 = maxy[i];
-						const float maxz0 = maxz[i];
-
-						for(int k=0;k<n8;k++)
-							mat[k] = (i!=k);
-						for(int k=0;k<n8;k++)
-							mat[k] = mat[k] &&
-							(pId<partId[k]);
-
-						for(int k=0;k<n8;k++)
-							mat[k] = mat[k] &&
-							intersectDim(minx0, maxx0, minx[k], maxx[k]) &&
-							intersectDim(miny0, maxy0, miny[k], maxy[k]) &&
-							intersectDim(minz0, maxz0, minz[k], maxz[k]);
-
-
-						for(int k=n8;k<n;k++)
-						{
-							mat[k] = (i!=k);
-							mat[k] = mat[k] && (pId<partId[k]);
-							mat[k] = mat[k] && intersectDim(minx0, maxx0, minx[k], maxx[k]);
-							mat[k] = mat[k] && intersectDim(miny0, maxy0, miny[k], maxy[k]);
-							mat[k] = mat[k] && intersectDim(minz0, maxz0, minz[k], maxz[k]);
-						}
-
-
-
-						for(int j=0;j<testParticleLimit;j++)
-						{
-							if(mat[j])
-								map.insert(partId[j]);
-						}
 
 
 				}
-				*/
 
 			}
-
-
 
 
 
@@ -1317,9 +1223,8 @@ namespace FastColDetLib
 				else
 				{
 					fields->mem.childNodeCount.set(nodeOffset/3,0);
-
-					// compute collision mask for each particle
-
+					const int idx = fields->mem.leafOffset.allocate(1);
+					fields->mem.leafOffset.set(idx,nodeOffset);
 				}
 
 				nodeOffset += 3;
