@@ -17,7 +17,9 @@ C++ fast collision detection for uniform(and non-uniform)-distributed AABB parti
 
 ## Sparse - Linear - Adaptive Grid
 
-- More than 2000x speedup against naive brute-force, in single-thread
+- More than 2000x speedup against naive brute-force, in single-thread for 10000 particles
+- 60 FPS for 20000 particles and ~25000 collision pairs on 2.1GHz FX8150 single-thread
+- - 100+ FPS for new CPUs
 - Better performance stability compared to non-sparse version
 - Better SIMD support on all-pairs computation method using tiled-computing
 
