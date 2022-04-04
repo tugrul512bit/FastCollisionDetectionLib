@@ -1,5 +1,7 @@
 # FastCollisionDetectionLib
-C++ fast collision detection for uniform-distributed AABB particles using adaptive grid with implicit vectorization. 
+C++ fast collision detection for uniform(and non-uniform)-distributed AABB particles using adaptive grid with implicit vectorization. 
+
+## Non-Sparse Adaptive Grid
 
 - 10 million dynamic particles AABB collision check per second against static grid of 8000 particles
 - 1000x speedup against naive brute-force algorithm for 40k particles (static vs static), with uniform-distribution in range [0 - 1]).
@@ -14,6 +16,10 @@ C++ fast collision detection for uniform-distributed AABB particles using adapti
 - - In user defined particle (box as example here), methods (getMinX/Y/Z and getMaxX/Y/Z)  must return AABB corners of the underlying user-particle
 
 ## Sparse - Linear - Adaptive Grid
+
+- More than 2000x speedup against naive brute-force, in single-thread
+- Better performance stability compared to non-sparse version
+- Better SIMD support on all-pairs computation method using tiled-computing
 
 ```C++
 // prepare memory pool
