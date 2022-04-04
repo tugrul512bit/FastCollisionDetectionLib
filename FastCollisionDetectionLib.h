@@ -32,10 +32,6 @@ namespace FastColDetLib
 
 
 
-	/*
-	 * interface to build various objects that can collide each other
-	 *
-	 */
 
 
 	inline
@@ -44,6 +40,10 @@ namespace FastColDetLib
 		return !((maxx < minx2) || (maxx2 < minx));
 	}
 
+	/*
+	 * interface to build various objects that can collide each other
+	 *
+	 */
 	template<typename CoordType>
 	class IParticle
 	{
@@ -836,10 +836,10 @@ namespace FastColDetLib
 
 
 
-		// visits all leaf nodes and computes nxn collision pairs
+
 		std::vector<std::pair<int,int>> findCollisionsAll()
 		{
-			//std::unordered_map<int,FastUnique<int32_t, testParticleLimit>> fastSet;
+
 			const int resetN = fields->mem.indexParticle.size();
 
 			fields->mem.allPairsCollmapping.allocate(resetN);
@@ -850,10 +850,10 @@ namespace FastColDetLib
 			fields->mem.allPairsCollmapping.reset();
 
 
-			//fastSet.reserve(fields->mem.indexParticle.size());
+
 			fields->mem.allPairsColl.reset();
 			std::vector<std::pair<int,int>> result;
-			//result.reserve(100000);
+
 
 
 			const int numLeaf = fields->mem.leafOffset.size();
@@ -948,8 +948,6 @@ namespace FastColDetLib
 
 
 					// SIMD computation (tiled computing)
-
-					if(true)
 					{
 						alignas(32)
 						int out[16]={
@@ -993,11 +991,10 @@ namespace FastColDetLib
 								for(int k=0;k<16;k++)
 								{
 									const int k3 = k&3;
-									const int id1 = i+k3;
 									const int id2 = j+(k>>2);
-									if(out[k]/* && partId[id1]>=0 && partId[id2]>=0*/)
+									if(out[k])
 									{
-										//FastUnique<int32_t, testParticleLimit>& map = fields->mem.allPairsCollmapping.getRef(partId[id1]);
+
 										if(map[k3])
 											map[k3]->insert(partId[id2]);
 									}
