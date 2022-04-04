@@ -63,7 +63,7 @@ while(simulation)
 
 For details, please visit ![https://github.com/tugrul512bit/FastCollisionDetectionLib/wiki](https://github.com/tugrul512bit/FastCollisionDetectionLib/wiki) wiki page.
 
-Working demo (requires linking pthread for header and gomp/fopenmp for this demo):
+Working demo for non-sparse (old version) adaptive grid (requires linking pthread for header and gomp/fopenmp for this demo):
 
 ```C++
 #include"FastCollisionDetectionLib.h"
