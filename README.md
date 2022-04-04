@@ -13,6 +13,54 @@ C++ fast collision detection for uniform-distributed AABB particles using adapti
 - Implementation of IParticle is an AABB (axis-aligned bounding box) model 
 - - In user defined particle (box as example here), methods (getMinX/Y/Z and getMaxX/Y/Z)  must return AABB corners of the underlying user-particle
 
+## Sparse - Linear - Adaptive Grid
+
+```C++
+// prepare memory pool
+FastColDetLib::MemoryPool memPool;
+
+// map grid to a volume of cube between corners of (0,0,0) and (10005,10005,10005)
+FastColDetLib::AdaptiveGridV2 grid(memPool,0,0,0,10005,10005,10005);
+
+// implement IParticle<float>
+struct AABBofPointCloud: public FastColDetLib::IParticle<float>
+{
+   ...
+   	const CoordType getMaxX()const {return xmax;}
+	const CoordType getMaxY()const {return ymax;}
+	const CoordType getMaxZ()const {return zmax;}
+	const CoordType getMinX()const {return xmin;}
+	const CoordType getMinY()const {return ymin;}
+	const CoordType getMinZ()const {return zmin;}
+	const int getId()const {return id;}
+    ...
+};
+
+// initialize AABB vector
+std::vector<AABBofPointCloud> AABBs;
+
+while(simulation)
+{
+    // clear tree data
+    grid.clear();
+    
+    // add particles that implement IParticle<float> into grid
+    grid.addParticles(N,AABBs.data());
+    
+    // build tree
+    grid.buildTree();
+    
+    // compute all-pairs collision array 
+    // 60FPS on FX8150 2.1GHz single-thread for 20000 particles with less than 29000 collisions
+    // 100FPS on Xeon Gold 5215 2.9GHz single-thread for 20000 particles with less than 29000 collisions
+    std::vector<std::pair<int,int>> vec = grid2_0.findCollisionsAll();
+    
+    // the vec contains id-values of particles that have their AABBs collide so that you can do further fine-grained collision checks between them
+}
+
+```
+
+
 For details, please visit ![https://github.com/tugrul512bit/FastCollisionDetectionLib/wiki](https://github.com/tugrul512bit/FastCollisionDetectionLib/wiki) wiki page.
 
 Working demo (requires linking pthread for header and gomp/fopenmp for this demo):
