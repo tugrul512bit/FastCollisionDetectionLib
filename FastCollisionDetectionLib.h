@@ -160,7 +160,10 @@ namespace FastColDetLib
 	    }
 
 	    private:
+	    alignas(32)
 	    SignedIntegralType dict[n];
+
+	    alignas(32)
 	    SignedIntegralType c[n];
 	    int it;
 
@@ -855,9 +858,7 @@ namespace FastColDetLib
 			std::vector<std::pair<int,int>> result;
 
 
-
 			const int numLeaf = fields->mem.leafOffset.size();
-
 			for(int leaf=0;leaf<numLeaf;leaf++)
 			{
 
@@ -866,6 +867,8 @@ namespace FastColDetLib
 					const int leafOfs = fields->mem.leafOffset.get(leaf);
 					const int ptr = fields->mem.index.get(leafOfs);
 					const int n = fields->mem.index.get(leafOfs+1);
+
+
 
 					alignas(32)
 					int index[testParticleLimit];
@@ -1007,6 +1010,7 @@ namespace FastColDetLib
 				}
 
 			}
+
 
 
 
