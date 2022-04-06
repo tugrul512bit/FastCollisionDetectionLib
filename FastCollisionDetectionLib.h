@@ -2051,7 +2051,7 @@ public:
 				}
 			}
 
-			for(int i=sz4;i<sz;i++)
+			for(int i=0;i<sz;i++)
 			{
 				for(int j=sz4;j<sz;j++)
 				{
