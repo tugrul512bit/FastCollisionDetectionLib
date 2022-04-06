@@ -274,8 +274,8 @@ namespace FastColDetLib
 	};
 
 
-	constexpr int testParticleLimit = 128; // maximum particle AABB overlapping allowed on same cell
-	constexpr int testUniqueLimit = 32; // maximum unique numbers for accumulation (equal to or less than testParticleLimit)
+	constexpr int testParticleLimit = 128; // maximum particle AABB overlapping allowed on same leaf node
+	constexpr int testUniqueLimit = 32; // maximum particle AABB overlapping on same space (that pass AABB collision test)
 	struct MemoryPool
 	{
 		void clear()
