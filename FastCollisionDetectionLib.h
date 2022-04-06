@@ -274,7 +274,8 @@ namespace FastColDetLib
 	};
 
 
-	constexpr int testParticleLimit = 32; // maximum particle AABB overlapping allowed on same cell
+	constexpr int testParticleLimit = 128; // maximum particle AABB overlapping allowed on same cell
+	constexpr int testUniqueLimit = 32; // maximum unique numbers for accumulation (equal to or less than testParticleLimit)
 	struct MemoryPool
 	{
 		void clear()
@@ -327,7 +328,7 @@ namespace FastColDetLib
 
 		Memory<std::pair<int,int>> allPairsColl;
 
-		Memory<FastUnique<int32_t, testParticleLimit>> allPairsCollmapping;
+		Memory<FastUnique<int32_t, testUniqueLimit>> allPairsCollmapping;
 		Memory<int> leafOffset;
 
 	};
@@ -686,7 +687,7 @@ namespace FastColDetLib
 		std::vector<int> findCollisions(const float minx, const float miny, const float minz,
 				const float maxx, const float maxy, const float maxz)
 		{
-			FastUnique<int32_t, testParticleLimit> fastSet;
+			FastUnique<int32_t, testUniqueLimit> fastSet;
 			std::vector<int> result;
 			std::stack<NodeTask> nodesToCompute;
 			std::vector<LeafTask> particlesToCompute;
@@ -965,7 +966,7 @@ namespace FastColDetLib
 							if(i>=n)
 								break;
 
-							FastUnique<int32_t, testParticleLimit> * map[simd] = {
+							FastUnique<int32_t, testUniqueLimit> * map[simd] = {
 									partId[i]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i]):nullptr,
 									partId[i+1]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+1]):nullptr,
 									partId[i+2]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+2]):nullptr,
@@ -1017,7 +1018,7 @@ namespace FastColDetLib
 
 			for(int i=0;i<resetN;i++)
 			{
-				FastUnique<int32_t, testParticleLimit>& map = fields->mem.allPairsCollmapping.getRef(i);
+				FastUnique<int32_t, testUniqueLimit>& map = fields->mem.allPairsCollmapping.getRef(i);
 				const int ms = map.size();
 				const int allocIdx = fields->mem.allPairsColl.allocate(ms);
 
@@ -2098,6 +2099,7 @@ public:
 			return result;
 		}
 private:
+		inline
 		void comp4vs4(	const int * const __restrict__ partId1, const int * const __restrict__ partId2,
 							const float * const __restrict__ minx1, const float * const __restrict__ minx2,
 							const float * const __restrict__ miny1, const float * const __restrict__ miny2,
@@ -2106,7 +2108,7 @@ private:
 							const float * const __restrict__ maxy1, const float * const __restrict__ maxy2,
 							const float * const __restrict__ maxz1, const float * const __restrict__ maxz2,
 							int * const __restrict__ out
-							)
+							) const noexcept
 		{
 			alignas(32)
 			int result[16]={
