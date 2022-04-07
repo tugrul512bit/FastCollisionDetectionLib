@@ -40,6 +40,109 @@ namespace FastColDetLib
 		return !((maxx < minx2) || (maxx2 < minx));
 	}
 
+	inline
+	void comp4vs4(	const int * const __restrict__ partId1, const int * const __restrict__ partId2,
+						const float * const __restrict__ minx1, const float * const __restrict__ minx2,
+						const float * const __restrict__ miny1, const float * const __restrict__ miny2,
+						const float * const __restrict__ minz1, const float * const __restrict__ minz2,
+						const float * const __restrict__ maxx1, const float * const __restrict__ maxx2,
+						const float * const __restrict__ maxy1, const float * const __restrict__ maxy2,
+						const float * const __restrict__ maxz1, const float * const __restrict__ maxz2,
+						int * const __restrict__ out
+						) noexcept
+	{
+
+		alignas(64)
+		const int tileId2[16]={
+				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
+				partId2[0],partId2[0],partId2[0],partId2[0],
+				partId2[1],partId2[1],partId2[1],partId2[1],
+				partId2[2],partId2[2],partId2[2],partId2[2],
+				partId2[3],partId2[3],partId2[3],partId2[3]
+		};
+
+
+
+		alignas(64)
+		const float tileMinX2[16]={
+				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
+				minx2[0],minx2[0],minx2[0],minx2[0],
+				minx2[1],minx2[1],minx2[1],minx2[1],
+				minx2[2],minx2[2],minx2[2],minx2[2],
+				minx2[3],minx2[3],minx2[3],minx2[3]
+		};
+
+
+		alignas(64)
+		const float tileMinY2[16]={
+				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
+				miny2[0],miny2[0],miny2[0],miny2[0],
+				miny2[1],miny2[1],miny2[1],miny2[1],
+				miny2[2],miny2[2],miny2[2],miny2[2],
+				miny2[3],miny2[3],miny2[3],miny2[3]
+		};
+
+
+
+		alignas(64)
+		const float tileMinZ2[16]={
+				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
+				minz2[0],minz2[0],minz2[0],minz2[0],
+				minz2[1],minz2[1],minz2[1],minz2[1],
+				minz2[2],minz2[2],minz2[2],minz2[2],
+				minz2[3],minz2[3],minz2[3],minz2[3]
+		};
+
+
+
+
+
+
+		alignas(64)
+		const float tileMaxX2[16]={
+				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
+				maxx2[0],maxx2[0],maxx2[0],maxx2[0],
+				maxx2[1],maxx2[1],maxx2[1],maxx2[1],
+				maxx2[2],maxx2[2],maxx2[2],maxx2[2],
+				maxx2[3],maxx2[3],maxx2[3],maxx2[3]
+		};
+
+
+
+		alignas(64)
+		const float tileMaxY2[16]={
+				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
+				maxy2[0],maxy2[0],maxy2[0],maxy2[0],
+				maxy2[1],maxy2[1],maxy2[1],maxy2[1],
+				maxy2[2],maxy2[2],maxy2[2],maxy2[2],
+				maxy2[3],maxy2[3],maxy2[3],maxy2[3]
+		};
+
+
+
+		alignas(64)
+		const float tileMaxZ2[16]={
+				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
+				maxz2[0],maxz2[0],maxz2[0],maxz2[0],
+				maxz2[1],maxz2[1],maxz2[1],maxz2[1],
+				maxz2[2],maxz2[2],maxz2[2],maxz2[2],
+				maxz2[3],maxz2[3],maxz2[3],maxz2[3]
+		};
+
+
+
+		for(int i=0;i<16;i++)
+		{
+            const int o1 =  (partId1[i] < tileId2[i]);
+            const int o2 = intersectDim(minx1[i], maxx1[i], tileMinX2[i], tileMaxX2[i]);
+            const int o3 = intersectDim(miny1[i], maxy1[i], tileMinY2[i], tileMaxY2[i]);
+            const int o4 = intersectDim(minz1[i], maxz1[i], tileMinZ2[i], tileMaxZ2[i]);
+            out[i] = o1 && o2 && o3 && o4;
+
+        }
+
+	};
+
 	/*
 	 * interface to build various objects that can collide each other
 	 *
@@ -274,8 +377,8 @@ namespace FastColDetLib
 	};
 
 
-	constexpr int testParticleLimit = 128; // maximum particle AABB overlapping allowed on same leaf node
-	constexpr int testUniqueLimit = 32; // maximum particle AABB overlapping on same space (that pass AABB collision test)
+	constexpr int testParticleLimit = 128; // maximum particle AABB overlapping allowed on same cell
+	constexpr int testUniqueLimit = 32; // maximum unique numbers for accumulation (equal to or less than testParticleLimit)
 	struct MemoryPool
 	{
 		void clear()
@@ -385,179 +488,7 @@ namespace FastColDetLib
 
 
 
-		void comp4vs4(	const int * const __restrict__ partId1, const int * const __restrict__ partId2,
-							const float * const __restrict__ minx1, const float * const __restrict__ minx2,
-							const float * const __restrict__ miny1, const float * const __restrict__ miny2,
-							const float * const __restrict__ minz1, const float * const __restrict__ minz2,
-							const float * const __restrict__ maxx1, const float * const __restrict__ maxx2,
-							const float * const __restrict__ maxy1, const float * const __restrict__ maxy2,
-							const float * const __restrict__ maxz1, const float * const __restrict__ maxz2,
-							int * const __restrict__ out
-							)
-		{
-			alignas(32)
-			int result[16]={
-				// 0v0 0v1 0v2 0v3
-				// 1v0 1v1 1v2 1v3
-				// 2v0 2v1 2v2 2v3
-				// 3v0 3v1 3v2 3v3
-				0, 0, 0, 0,
-				0, 0, 0, 0,
-				0, 0, 0, 0,
-				0, 0, 0, 0
-			};
 
-			alignas(32)
-			int tileId1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					partId1[0],partId1[1],partId1[2],partId1[3],
-					partId1[0],partId1[1],partId1[2],partId1[3],
-					partId1[0],partId1[1],partId1[2],partId1[3],
-					partId1[0],partId1[1],partId1[2],partId1[3]
-			};
-
-			alignas(32)
-			int tileId2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					partId2[0],partId2[0],partId2[0],partId2[0],
-					partId2[1],partId2[1],partId2[1],partId2[1],
-					partId2[2],partId2[2],partId2[2],partId2[2],
-					partId2[3],partId2[3],partId2[3],partId2[3]
-			};
-
-			alignas(32)
-			float tileMinX1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					minx1[0],minx1[1],minx1[2],minx1[3],
-					minx1[0],minx1[1],minx1[2],minx1[3],
-					minx1[0],minx1[1],minx1[2],minx1[3],
-					minx1[0],minx1[1],minx1[2],minx1[3]
-			};
-
-			alignas(32)
-			float tileMinX2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					minx2[0],minx2[0],minx2[0],minx2[0],
-					minx2[1],minx2[1],minx2[1],minx2[1],
-					minx2[2],minx2[2],minx2[2],minx2[2],
-					minx2[3],minx2[3],minx2[3],minx2[3]
-			};
-
-			alignas(32)
-			float tileMinY1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					miny1[0],miny1[1],miny1[2],miny1[3],
-					miny1[0],miny1[1],miny1[2],miny1[3],
-					miny1[0],miny1[1],miny1[2],miny1[3],
-					miny1[0],miny1[1],miny1[2],miny1[3]
-			};
-
-			alignas(32)
-			float tileMinY2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					miny2[0],miny2[0],miny2[0],miny2[0],
-					miny2[1],miny2[1],miny2[1],miny2[1],
-					miny2[2],miny2[2],miny2[2],miny2[2],
-					miny2[3],miny2[3],miny2[3],miny2[3]
-			};
-
-			alignas(32)
-			float tileMinZ1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					minz1[0],minz1[1],minz1[2],minz1[3],
-					minz1[0],minz1[1],minz1[2],minz1[3],
-					minz1[0],minz1[1],minz1[2],minz1[3],
-					minz1[0],minz1[1],minz1[2],minz1[3]
-			};
-
-			alignas(32)
-			float tileMinZ2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					minz2[0],minz2[0],minz2[0],minz2[0],
-					minz2[1],minz2[1],minz2[1],minz2[1],
-					minz2[2],minz2[2],minz2[2],minz2[2],
-					minz2[3],minz2[3],minz2[3],minz2[3]
-			};
-
-
-
-
-
-
-
-
-
-
-
-			alignas(32)
-			float tileMaxX1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					maxx1[0],maxx1[1],maxx1[2],maxx1[3],
-					maxx1[0],maxx1[1],maxx1[2],maxx1[3],
-					maxx1[0],maxx1[1],maxx1[2],maxx1[3],
-					maxx1[0],maxx1[1],maxx1[2],maxx1[3]
-			};
-
-			alignas(32)
-			float tileMaxX2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					maxx2[0],maxx2[0],maxx2[0],maxx2[0],
-					maxx2[1],maxx2[1],maxx2[1],maxx2[1],
-					maxx2[2],maxx2[2],maxx2[2],maxx2[2],
-					maxx2[3],maxx2[3],maxx2[3],maxx2[3]
-			};
-
-			alignas(32)
-			float tileMaxY1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					maxy1[0],maxy1[1],maxy1[2],maxy1[3],
-					maxy1[0],maxy1[1],maxy1[2],maxy1[3],
-					maxy1[0],maxy1[1],maxy1[2],maxy1[3],
-					maxy1[0],maxy1[1],maxy1[2],maxy1[3]
-			};
-
-			alignas(32)
-			float tileMaxY2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					maxy2[0],maxy2[0],maxy2[0],maxy2[0],
-					maxy2[1],maxy2[1],maxy2[1],maxy2[1],
-					maxy2[2],maxy2[2],maxy2[2],maxy2[2],
-					maxy2[3],maxy2[3],maxy2[3],maxy2[3]
-			};
-
-			alignas(32)
-			float tileMaxZ1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					maxz1[0],maxz1[1],maxz1[2],maxz1[3],
-					maxz1[0],maxz1[1],maxz1[2],maxz1[3],
-					maxz1[0],maxz1[1],maxz1[2],maxz1[3],
-					maxz1[0],maxz1[1],maxz1[2],maxz1[3]
-			};
-
-			alignas(32)
-			float tileMaxZ2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					maxz2[0],maxz2[0],maxz2[0],maxz2[0],
-					maxz2[1],maxz2[1],maxz2[1],maxz2[1],
-					maxz2[2],maxz2[2],maxz2[2],maxz2[2],
-					maxz2[3],maxz2[3],maxz2[3],maxz2[3]
-			};
-
-
-
-
-			for(int i=0;i<16;i++)
-				result[i] =  (tileId1[i] < tileId2[i]);
-
-			for(int i=0;i<16;i++)
-				result[i] = result[i] &&
-				intersectDim(tileMinX1[i], tileMaxX1[i], tileMinX2[i], tileMaxX2[i]) &&
-				intersectDim(tileMinY1[i], tileMaxY1[i], tileMinY2[i], tileMaxY2[i]) &&
-				intersectDim(tileMinZ1[i], tileMaxZ1[i], tileMinZ2[i], tileMaxZ2[i]);
-
-			for(int i=0;i<16;i++)
-				out[i]=result[i];
-		};
 	public:
 		AdaptiveGridV2(MemoryPool mem, const float minx, const float miny, const float minz,
 				const float maxx, const float maxy, const float maxz)
@@ -973,6 +904,88 @@ namespace FastColDetLib
 									partId[i+3]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+3]):nullptr
 							};
 
+							alignas(64)
+							const int tileId1[16]={
+									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+									partId[i+0],partId[i+1],partId[i+2],partId[i+3],
+									tileId1[0],tileId1[1],tileId1[2],tileId1[3],
+									tileId1[0],tileId1[1],tileId1[2],tileId1[3],
+									tileId1[0],tileId1[1],tileId1[2],tileId1[3]
+							};
+
+
+
+							alignas(64)
+							const float tileMinX1[16]={
+									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+									minx[i+0],minx[i+1],minx[i+2],minx[i+3],
+									tileMinX1[0],tileMinX1[1],tileMinX1[2],tileMinX1[3],
+									tileMinX1[0],tileMinX1[1],tileMinX1[2],tileMinX1[3],
+									tileMinX1[0],tileMinX1[1],tileMinX1[2],tileMinX1[3]
+							};
+
+
+							alignas(64)
+							const float tileMinY1[16]={
+									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+									miny[i+0],miny[i+1],miny[i+2],miny[i+3],
+									tileMinY1[0],tileMinY1[1],tileMinY1[2],tileMinY1[3],
+									tileMinY1[0],tileMinY1[1],tileMinY1[2],tileMinY1[3],
+									tileMinY1[0],tileMinY1[1],tileMinY1[2],tileMinY1[3]
+							};
+
+
+
+							alignas(64)
+							const float tileMinZ1[16]={
+									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+									minz[i+0],minz[i+1],minz[i+2],minz[i+3],
+									tileMinZ1[0],tileMinZ1[1],tileMinZ1[2],tileMinZ1[3],
+									tileMinZ1[0],tileMinZ1[1],tileMinZ1[2],tileMinZ1[3],
+									tileMinZ1[0],tileMinZ1[1],tileMinZ1[2],tileMinZ1[3]
+							};
+
+
+
+
+
+
+							alignas(64)
+							const float tileMaxX1[16]={
+									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+									maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3],
+									tileMaxX1[0],tileMaxX1[1],tileMaxX1[2],tileMaxX1[3],
+									tileMaxX1[0],tileMaxX1[1],tileMaxX1[2],tileMaxX1[3],
+									tileMaxX1[0],tileMaxX1[1],tileMaxX1[2],tileMaxX1[3]
+							};
+
+
+
+							alignas(64)
+							const float tileMaxY1[16]={
+									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+									maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3],
+									tileMaxY1[0],tileMaxY1[1],tileMaxY1[2],tileMaxY1[3],
+									tileMaxY1[0],tileMaxY1[1],tileMaxY1[2],tileMaxY1[3],
+									tileMaxY1[0],tileMaxY1[1],tileMaxY1[2],tileMaxY1[3]
+							};
+
+
+
+							alignas(64)
+							const float tileMaxZ1[16]={
+									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+									maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3],
+									tileMaxZ1[0],tileMaxZ1[1],tileMaxZ1[2],tileMaxZ1[3],
+									tileMaxZ1[0],tileMaxZ1[1],tileMaxZ1[2],tileMaxZ1[3],
+									tileMaxZ1[0],tileMaxZ1[1],tileMaxZ1[2],tileMaxZ1[3]
+							};
+
+
+
+
+
+
 							for(int j=i;j<testParticleLimit;j+=simd)
 							{
 								if(j>=n)
@@ -982,13 +995,13 @@ namespace FastColDetLib
 								// 2v0, 2v1, 2v2, 2v3,
 								// 3v0, 3v1, 3v2, 3v3,
 
-								comp4vs4(	partId+i, partId+j,
-											minx+i, minx+j,
-											miny+i, miny+j,
-											minz+i, minz+j,
-											maxx+i, maxx+j,
-											maxy+i, maxy+j,
-											maxz+i, maxz+j,
+								comp4vs4(	tileId1, partId+j,
+											tileMinX1, minx+j,
+											tileMinY1, miny+j,
+											tileMinZ1, minz+j,
+											tileMaxX1, maxx+j,
+											tileMaxY1, maxy+j,
+											tileMaxZ1, maxz+j,
 											out
 								);
 
@@ -2029,16 +2042,94 @@ public:
 			const int sz4 = sz - (sz&3);
 			for(int i=0;i<sz4;i+=4)
 			{
+
+				alignas(64)
+				const int tileId1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						id[i+0],id[i+1],id[i+2],id[i+3],
+						id[i+0],id[i+1],id[i+2],id[i+3],
+						id[i+0],id[i+1],id[i+2],id[i+3],
+						id[i+0],id[i+1],id[i+2],id[i+3]
+				};
+
+
+
+				alignas(64)
+				const float tileMinX1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						minx[i+0],minx[i+1],minx[i+2],minx[i+3],
+						minx[i+0],minx[i+1],minx[i+2],minx[i+3],
+						minx[i+0],minx[i+1],minx[i+2],minx[i+3],
+						minx[i+0],minx[i+1],minx[i+2],minx[i+3]
+				};
+
+
+				alignas(64)
+				const float tileMinY1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						miny[i+0],miny[i+1],miny[i+2],miny[i+3],
+						miny[i+0],miny[i+1],miny[i+2],miny[i+3],
+						miny[i+0],miny[i+1],miny[i+2],miny[i+3],
+						miny[i+0],miny[i+1],miny[i+2],miny[i+3]
+				};
+
+
+
+				alignas(64)
+				const float tileMinZ1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						minz[i+0],minz[i+1],minz[i+2],minz[i+3],
+						minz[i+0],minz[i+1],minz[i+2],minz[i+3],
+						minz[i+0],minz[i+1],minz[i+2],minz[i+3],
+						minz[i+0],minz[i+1],minz[i+2],minz[i+3]
+				};
+
+
+
+
+
+
+				alignas(64)
+				const float tileMaxX1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3],
+						maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3],
+						maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3],
+						maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3]
+				};
+
+
+
+				alignas(64)
+				const float tileMaxY1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3],
+						maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3],
+						maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3],
+						maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3]
+				};
+
+
+
+				alignas(64)
+				const float tileMaxZ1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3],
+						maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3],
+						maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3],
+						maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3]
+				};
+
 				for(int j=i;j<sz4;j+=4)
 				{
 					int out[16];
-					comp4vs4(	id.data()+i, id.data()+j,
-								minx.data()+i, minx.data()+j,
-								miny.data()+i, miny.data()+j,
-								minz.data()+i, minz.data()+j,
-								maxx.data()+i, maxx.data()+j,
-								maxy.data()+i, maxy.data()+j,
-								maxz.data()+i, maxz.data()+j,
+					comp4vs4(	tileId1, id.data()+j,
+								tileMinX1, minx.data()+j,
+								tileMinY1, miny.data()+j,
+								tileMinZ1, minz.data()+j,
+								tileMaxX1, maxx.data()+j,
+								tileMaxY1, maxy.data()+j,
+								tileMaxZ1, maxz.data()+j,
 								out
 					);
 
@@ -2099,180 +2190,7 @@ public:
 			return result;
 		}
 private:
-		inline
-		void comp4vs4(	const int * const __restrict__ partId1, const int * const __restrict__ partId2,
-							const float * const __restrict__ minx1, const float * const __restrict__ minx2,
-							const float * const __restrict__ miny1, const float * const __restrict__ miny2,
-							const float * const __restrict__ minz1, const float * const __restrict__ minz2,
-							const float * const __restrict__ maxx1, const float * const __restrict__ maxx2,
-							const float * const __restrict__ maxy1, const float * const __restrict__ maxy2,
-							const float * const __restrict__ maxz1, const float * const __restrict__ maxz2,
-							int * const __restrict__ out
-							) const noexcept
-		{
-			alignas(32)
-			int result[16]={
-				// 0v0 0v1 0v2 0v3
-				// 1v0 1v1 1v2 1v3
-				// 2v0 2v1 2v2 2v3
-				// 3v0 3v1 3v2 3v3
-				0, 0, 0, 0,
-				0, 0, 0, 0,
-				0, 0, 0, 0,
-				0, 0, 0, 0
-			};
 
-			alignas(32)
-			int tileId1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					partId1[0],partId1[1],partId1[2],partId1[3],
-					partId1[0],partId1[1],partId1[2],partId1[3],
-					partId1[0],partId1[1],partId1[2],partId1[3],
-					partId1[0],partId1[1],partId1[2],partId1[3]
-			};
-
-			alignas(32)
-			int tileId2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					partId2[0],partId2[0],partId2[0],partId2[0],
-					partId2[1],partId2[1],partId2[1],partId2[1],
-					partId2[2],partId2[2],partId2[2],partId2[2],
-					partId2[3],partId2[3],partId2[3],partId2[3]
-			};
-
-			alignas(32)
-			float tileMinX1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					minx1[0],minx1[1],minx1[2],minx1[3],
-					minx1[0],minx1[1],minx1[2],minx1[3],
-					minx1[0],minx1[1],minx1[2],minx1[3],
-					minx1[0],minx1[1],minx1[2],minx1[3]
-			};
-
-			alignas(32)
-			float tileMinX2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					minx2[0],minx2[0],minx2[0],minx2[0],
-					minx2[1],minx2[1],minx2[1],minx2[1],
-					minx2[2],minx2[2],minx2[2],minx2[2],
-					minx2[3],minx2[3],minx2[3],minx2[3]
-			};
-
-			alignas(32)
-			float tileMinY1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					miny1[0],miny1[1],miny1[2],miny1[3],
-					miny1[0],miny1[1],miny1[2],miny1[3],
-					miny1[0],miny1[1],miny1[2],miny1[3],
-					miny1[0],miny1[1],miny1[2],miny1[3]
-			};
-
-			alignas(32)
-			float tileMinY2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					miny2[0],miny2[0],miny2[0],miny2[0],
-					miny2[1],miny2[1],miny2[1],miny2[1],
-					miny2[2],miny2[2],miny2[2],miny2[2],
-					miny2[3],miny2[3],miny2[3],miny2[3]
-			};
-
-			alignas(32)
-			float tileMinZ1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					minz1[0],minz1[1],minz1[2],minz1[3],
-					minz1[0],minz1[1],minz1[2],minz1[3],
-					minz1[0],minz1[1],minz1[2],minz1[3],
-					minz1[0],minz1[1],minz1[2],minz1[3]
-			};
-
-			alignas(32)
-			float tileMinZ2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					minz2[0],minz2[0],minz2[0],minz2[0],
-					minz2[1],minz2[1],minz2[1],minz2[1],
-					minz2[2],minz2[2],minz2[2],minz2[2],
-					minz2[3],minz2[3],minz2[3],minz2[3]
-			};
-
-
-
-
-
-
-
-
-
-
-
-			alignas(32)
-			float tileMaxX1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					maxx1[0],maxx1[1],maxx1[2],maxx1[3],
-					maxx1[0],maxx1[1],maxx1[2],maxx1[3],
-					maxx1[0],maxx1[1],maxx1[2],maxx1[3],
-					maxx1[0],maxx1[1],maxx1[2],maxx1[3]
-			};
-
-			alignas(32)
-			float tileMaxX2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					maxx2[0],maxx2[0],maxx2[0],maxx2[0],
-					maxx2[1],maxx2[1],maxx2[1],maxx2[1],
-					maxx2[2],maxx2[2],maxx2[2],maxx2[2],
-					maxx2[3],maxx2[3],maxx2[3],maxx2[3]
-			};
-
-			alignas(32)
-			float tileMaxY1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					maxy1[0],maxy1[1],maxy1[2],maxy1[3],
-					maxy1[0],maxy1[1],maxy1[2],maxy1[3],
-					maxy1[0],maxy1[1],maxy1[2],maxy1[3],
-					maxy1[0],maxy1[1],maxy1[2],maxy1[3]
-			};
-
-			alignas(32)
-			float tileMaxY2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					maxy2[0],maxy2[0],maxy2[0],maxy2[0],
-					maxy2[1],maxy2[1],maxy2[1],maxy2[1],
-					maxy2[2],maxy2[2],maxy2[2],maxy2[2],
-					maxy2[3],maxy2[3],maxy2[3],maxy2[3]
-			};
-
-			alignas(32)
-			float tileMaxZ1[16]={
-					// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-					maxz1[0],maxz1[1],maxz1[2],maxz1[3],
-					maxz1[0],maxz1[1],maxz1[2],maxz1[3],
-					maxz1[0],maxz1[1],maxz1[2],maxz1[3],
-					maxz1[0],maxz1[1],maxz1[2],maxz1[3]
-			};
-
-			alignas(32)
-			float tileMaxZ2[16]={
-					// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
-					maxz2[0],maxz2[0],maxz2[0],maxz2[0],
-					maxz2[1],maxz2[1],maxz2[1],maxz2[1],
-					maxz2[2],maxz2[2],maxz2[2],maxz2[2],
-					maxz2[3],maxz2[3],maxz2[3],maxz2[3]
-			};
-
-
-
-
-			for(int i=0;i<16;i++)
-				result[i] =  (tileId1[i] < tileId2[i]);
-
-			for(int i=0;i<16;i++)
-				result[i] = result[i] &&
-				intersectDim(tileMinX1[i], tileMaxX1[i], tileMinX2[i], tileMaxX2[i]) &&
-				intersectDim(tileMinY1[i], tileMaxY1[i], tileMinY2[i], tileMaxY2[i]) &&
-				intersectDim(tileMinZ1[i], tileMaxZ1[i], tileMinZ2[i], tileMaxZ2[i]);
-
-			for(int i=0;i<16;i++)
-				out[i]=result[i];
-		};
 		std::vector<IParticle<CoordType>*> particles;
 		std::vector<CollisionPair<CoordType>> collisionPairs;
 		std::map<int,IParticle<CoordType>*> idMap;
