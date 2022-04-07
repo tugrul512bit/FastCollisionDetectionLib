@@ -263,10 +263,10 @@ namespace FastColDetLib
 	    }
 
 	    private:
-	    alignas(32)
+	    alignas(64)
 	    SignedIntegralType dict[n];
 
-	    alignas(32)
+	    alignas(64)
 	    SignedIntegralType c[n];
 	    int it;
 
@@ -802,31 +802,31 @@ namespace FastColDetLib
 
 
 
-					alignas(32)
+					alignas(64)
 					int index[testParticleLimit];
 
-					alignas(32)
+					alignas(64)
 					int orderId[testParticleLimit];
 
-					alignas(32)
+					alignas(64)
 					int partId[testParticleLimit];
 
-					alignas(32)
+					alignas(64)
 					float minx[testParticleLimit];
 
-					alignas(32)
+					alignas(64)
 					float miny[testParticleLimit];
 
-					alignas(32)
+					alignas(64)
 					float minz[testParticleLimit];
 
-					alignas(32)
+					alignas(64)
 					float maxx[testParticleLimit];
 
-					alignas(32)
+					alignas(64)
 					float maxy[testParticleLimit];
 
-					alignas(32)
+					alignas(64)
 					float maxz[testParticleLimit];
 					constexpr int simd = 4;
 					constexpr int simd1 = simd-1;
@@ -885,12 +885,7 @@ namespace FastColDetLib
 					// SIMD computation (tiled computing)
 					{
 						alignas(64)
-						int out[16]={
-								0,0,0,0,
-								0,0,0,0,
-								0,0,0,0,
-								0,0,0,0
-						};
+						int out[16];
 
 						for(int i=0;i<testParticleLimit;i+=simd)
 						{
@@ -905,83 +900,104 @@ namespace FastColDetLib
 							};
 
 							alignas(64)
-							const int tileId1[16]={
+							int tileId1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									partId[i+0],partId[i+1],partId[i+2],partId[i+3],
-									tileId1[0],tileId1[1],tileId1[2],tileId1[3],
-									tileId1[0],tileId1[1],tileId1[2],tileId1[3],
-									tileId1[0],tileId1[1],tileId1[2],tileId1[3]
+									partId[i+0],partId[i+1],partId[i+2],partId[i+3]
 							};
+
+							for(int k=0;k<4;k++)
+							{
+								tileId1[k+4]=tileId1[k];
+								tileId1[k+8]=tileId1[k];
+								tileId1[k+12]=tileId1[k];
+							}
 
 
 
 							alignas(64)
-							const float tileMinX1[16]={
+							float tileMinX1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									minx[i+0],minx[i+1],minx[i+2],minx[i+3],
-									tileMinX1[0],tileMinX1[1],tileMinX1[2],tileMinX1[3],
-									tileMinX1[0],tileMinX1[1],tileMinX1[2],tileMinX1[3],
-									tileMinX1[0],tileMinX1[1],tileMinX1[2],tileMinX1[3]
+									minx[i+0],minx[i+1],minx[i+2],minx[i+3]
 							};
+							for(int k=0;k<4;k++)
+							{
+								tileMinX1[k+4]=tileMinX1[k];
+								tileMinX1[k+8]=tileMinX1[k];
+								tileMinX1[k+12]=tileMinX1[k];
+							}
 
 
 							alignas(64)
-							const float tileMinY1[16]={
+							float tileMinY1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									miny[i+0],miny[i+1],miny[i+2],miny[i+3],
-									tileMinY1[0],tileMinY1[1],tileMinY1[2],tileMinY1[3],
-									tileMinY1[0],tileMinY1[1],tileMinY1[2],tileMinY1[3],
-									tileMinY1[0],tileMinY1[1],tileMinY1[2],tileMinY1[3]
+									miny[i+0],miny[i+1],miny[i+2],miny[i+3]
 							};
 
-
-
-							alignas(64)
-							const float tileMinZ1[16]={
-									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									minz[i+0],minz[i+1],minz[i+2],minz[i+3],
-									tileMinZ1[0],tileMinZ1[1],tileMinZ1[2],tileMinZ1[3],
-									tileMinZ1[0],tileMinZ1[1],tileMinZ1[2],tileMinZ1[3],
-									tileMinZ1[0],tileMinZ1[1],tileMinZ1[2],tileMinZ1[3]
-							};
-
-
-
+							for(int k=0;k<4;k++)
+							{
+								tileMinY1[k+4]=tileMinY1[k];
+								tileMinY1[k+8]=tileMinY1[k];
+								tileMinY1[k+12]=tileMinY1[k];
+							}
 
 
 
 							alignas(64)
-							const float tileMaxX1[16]={
+							float tileMinZ1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3],
-									tileMaxX1[0],tileMaxX1[1],tileMaxX1[2],tileMaxX1[3],
-									tileMaxX1[0],tileMaxX1[1],tileMaxX1[2],tileMaxX1[3],
-									tileMaxX1[0],tileMaxX1[1],tileMaxX1[2],tileMaxX1[3]
+									minz[i+0],minz[i+1],minz[i+2],minz[i+3]
+
 							};
+
+							for(int k=0;k<4;k++)
+							{
+								tileMinZ1[k+4]=tileMinZ1[k];
+								tileMinZ1[k+8]=tileMinZ1[k];
+								tileMinZ1[k+12]=tileMinZ1[k];
+							}
+
+
 
 
 
 							alignas(64)
-							const float tileMaxY1[16]={
+							float tileMaxX1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3],
-									tileMaxY1[0],tileMaxY1[1],tileMaxY1[2],tileMaxY1[3],
-									tileMaxY1[0],tileMaxY1[1],tileMaxY1[2],tileMaxY1[3],
-									tileMaxY1[0],tileMaxY1[1],tileMaxY1[2],tileMaxY1[3]
+									maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3]
 							};
 
-
+							for(int k=0;k<4;k++)
+							{
+								tileMaxX1[k+4]=tileMaxX1[k];
+								tileMaxX1[k+8]=tileMaxX1[k];
+								tileMaxX1[k+12]=tileMaxX1[k];
+							}
 
 							alignas(64)
-							const float tileMaxZ1[16]={
+							float tileMaxY1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3],
-									tileMaxZ1[0],tileMaxZ1[1],tileMaxZ1[2],tileMaxZ1[3],
-									tileMaxZ1[0],tileMaxZ1[1],tileMaxZ1[2],tileMaxZ1[3],
-									tileMaxZ1[0],tileMaxZ1[1],tileMaxZ1[2],tileMaxZ1[3]
+									maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3]
 							};
 
+							for(int k=0;k<4;k++)
+							{
+								tileMaxY1[k+4]=tileMaxY1[k];
+								tileMaxY1[k+8]=tileMaxY1[k];
+								tileMaxY1[k+12]=tileMaxY1[k];
+							}
 
+							alignas(64)
+							float tileMaxZ1[16]={
+									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+									maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3]
+							};
+
+							for(int k=0;k<4;k++)
+							{
+								tileMaxZ1[k+4]=tileMaxZ1[k];
+								tileMaxZ1[k+8]=tileMaxZ1[k];
+								tileMaxZ1[k+12]=tileMaxZ1[k];
+							}
 
 
 
@@ -2122,7 +2138,6 @@ public:
 
 				for(int j=i;j<sz4;j+=4)
 				{
-					alignas(64)
 					int out[16];
 					comp4vs4(	tileId1, id.data()+j,
 								tileMinX1, minx.data()+j,
