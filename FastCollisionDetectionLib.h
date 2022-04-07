@@ -884,7 +884,7 @@ namespace FastColDetLib
 
 					// SIMD computation (tiled computing)
 					{
-						alignas(32)
+						alignas(64)
 						int out[16]={
 								0,0,0,0,
 								0,0,0,0,
@@ -2122,6 +2122,7 @@ public:
 
 				for(int j=i;j<sz4;j+=4)
 				{
+					alignas(64)
 					int out[16];
 					comp4vs4(	tileId1, id.data()+j,
 								tileMinX1, minx.data()+j,
