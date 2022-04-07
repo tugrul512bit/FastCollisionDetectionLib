@@ -52,7 +52,7 @@ namespace FastColDetLib
 						) noexcept
 	{
 
-		alignas(64)
+		alignas(32)
 		const int tileId2[16]={
 				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
 				partId2[0],partId2[0],partId2[0],partId2[0],
@@ -63,7 +63,7 @@ namespace FastColDetLib
 
 
 
-		alignas(64)
+		alignas(32)
 		const float tileMinX2[16]={
 				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
 				minx2[0],minx2[0],minx2[0],minx2[0],
@@ -73,7 +73,7 @@ namespace FastColDetLib
 		};
 
 
-		alignas(64)
+		alignas(32)
 		const float tileMinY2[16]={
 				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
 				miny2[0],miny2[0],miny2[0],miny2[0],
@@ -84,7 +84,7 @@ namespace FastColDetLib
 
 
 
-		alignas(64)
+		alignas(32)
 		const float tileMinZ2[16]={
 				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
 				minz2[0],minz2[0],minz2[0],minz2[0],
@@ -98,7 +98,7 @@ namespace FastColDetLib
 
 
 
-		alignas(64)
+		alignas(32)
 		const float tileMaxX2[16]={
 				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
 				maxx2[0],maxx2[0],maxx2[0],maxx2[0],
@@ -109,7 +109,7 @@ namespace FastColDetLib
 
 
 
-		alignas(64)
+		alignas(32)
 		const float tileMaxY2[16]={
 				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
 				maxy2[0],maxy2[0],maxy2[0],maxy2[0],
@@ -120,7 +120,7 @@ namespace FastColDetLib
 
 
 
-		alignas(64)
+		alignas(32)
 		const float tileMaxZ2[16]={
 				// 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
 				maxz2[0],maxz2[0],maxz2[0],maxz2[0],
@@ -263,10 +263,10 @@ namespace FastColDetLib
 	    }
 
 	    private:
-	    alignas(64)
+	    alignas(32)
 	    SignedIntegralType dict[n];
 
-	    alignas(64)
+	    alignas(32)
 	    SignedIntegralType c[n];
 	    int it;
 
@@ -802,31 +802,31 @@ namespace FastColDetLib
 
 
 
-					alignas(64)
+					alignas(32)
 					int index[testParticleLimit];
 
-					alignas(64)
+					alignas(32)
 					int orderId[testParticleLimit];
 
-					alignas(64)
+					alignas(32)
 					int partId[testParticleLimit];
 
-					alignas(64)
+					alignas(32)
 					float minx[testParticleLimit];
 
-					alignas(64)
+					alignas(32)
 					float miny[testParticleLimit];
 
-					alignas(64)
+					alignas(32)
 					float minz[testParticleLimit];
 
-					alignas(64)
+					alignas(32)
 					float maxx[testParticleLimit];
 
-					alignas(64)
+					alignas(32)
 					float maxy[testParticleLimit];
 
-					alignas(64)
+					alignas(32)
 					float maxz[testParticleLimit];
 					constexpr int simd = 4;
 					constexpr int simd1 = simd-1;
@@ -884,7 +884,7 @@ namespace FastColDetLib
 
 					// SIMD computation (tiled computing)
 					{
-						alignas(64)
+						alignas(32)
 						int out[16];
 
 						for(int i=0;i<testParticleLimit;i+=simd)
@@ -899,7 +899,7 @@ namespace FastColDetLib
 									partId[i+3]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+3]):nullptr
 							};
 
-							alignas(64)
+							alignas(32)
 							int tileId1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 									partId[i+0],partId[i+1],partId[i+2],partId[i+3]
@@ -914,7 +914,7 @@ namespace FastColDetLib
 
 
 
-							alignas(64)
+							alignas(32)
 							float tileMinX1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 									minx[i+0],minx[i+1],minx[i+2],minx[i+3]
@@ -927,7 +927,7 @@ namespace FastColDetLib
 							}
 
 
-							alignas(64)
+							alignas(32)
 							float tileMinY1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 									miny[i+0],miny[i+1],miny[i+2],miny[i+3]
@@ -942,7 +942,7 @@ namespace FastColDetLib
 
 
 
-							alignas(64)
+							alignas(32)
 							float tileMinZ1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 									minz[i+0],minz[i+1],minz[i+2],minz[i+3]
@@ -960,7 +960,7 @@ namespace FastColDetLib
 
 
 
-							alignas(64)
+							alignas(32)
 							float tileMaxX1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 									maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3]
@@ -973,7 +973,7 @@ namespace FastColDetLib
 								tileMaxX1[k+12]=tileMaxX1[k];
 							}
 
-							alignas(64)
+							alignas(32)
 							float tileMaxY1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 									maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3]
@@ -986,7 +986,7 @@ namespace FastColDetLib
 								tileMaxY1[k+12]=tileMaxY1[k];
 							}
 
-							alignas(64)
+							alignas(32)
 							float tileMaxZ1[16]={
 									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 									maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3]
@@ -2059,7 +2059,7 @@ public:
 			for(int i=0;i<sz4;i+=4)
 			{
 
-				alignas(64)
+				alignas(32)
 				const int tileId1[16]={
 						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 						id[i+0],id[i+1],id[i+2],id[i+3],
@@ -2070,7 +2070,7 @@ public:
 
 
 
-				alignas(64)
+				alignas(32)
 				const float tileMinX1[16]={
 						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 						minx[i+0],minx[i+1],minx[i+2],minx[i+3],
@@ -2080,7 +2080,7 @@ public:
 				};
 
 
-				alignas(64)
+				alignas(32)
 				const float tileMinY1[16]={
 						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 						miny[i+0],miny[i+1],miny[i+2],miny[i+3],
@@ -2091,7 +2091,7 @@ public:
 
 
 
-				alignas(64)
+				alignas(32)
 				const float tileMinZ1[16]={
 						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 						minz[i+0],minz[i+1],minz[i+2],minz[i+3],
@@ -2105,7 +2105,7 @@ public:
 
 
 
-				alignas(64)
+				alignas(32)
 				const float tileMaxX1[16]={
 						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 						maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3],
@@ -2116,7 +2116,7 @@ public:
 
 
 
-				alignas(64)
+				alignas(32)
 				const float tileMaxY1[16]={
 						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 						maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3],
@@ -2127,7 +2127,7 @@ public:
 
 
 
-				alignas(64)
+				alignas(32)
 				const float tileMaxZ1[16]={
 						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
 						maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3],
