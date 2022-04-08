@@ -893,10 +893,10 @@ namespace FastColDetLib
 								break;
 
 							FastUnique<int32_t, testUniqueLimit> * map[simd] = {
-									partId[i]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i]):nullptr,
-									partId[i+1]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+1]):nullptr,
-									partId[i+2]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+2]):nullptr,
-									partId[i+3]>=0?fields->mem.allPairsCollmapping.getPtr(partId[i+3]):nullptr
+									orderId[i]>=0?fields->mem.allPairsCollmapping.getPtr(orderId[i]):nullptr,
+									orderId[i+1]>=0?fields->mem.allPairsCollmapping.getPtr(orderId[i+1]):nullptr,
+									orderId[i+2]>=0?fields->mem.allPairsCollmapping.getPtr(orderId[i+2]):nullptr,
+									orderId[i+3]>=0?fields->mem.allPairsCollmapping.getPtr(orderId[i+3]):nullptr
 							};
 
 							alignas(32)
@@ -1029,7 +1029,7 @@ namespace FastColDetLib
 									{
 
 										if(map[k3])
-											map[k3]->insert(partId[id2]);
+											map[k3]->insert(orderId[id2]);
 									}
 								}
 							}
