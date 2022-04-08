@@ -597,6 +597,38 @@ namespace FastColDetLib
 
 
 
+		inline void addParticlesWithoutInterface(const int numParticlesToAdd, std::vector<int> orders,
+					std::vector<int> ids,
+					std::vector<float> minx0, std::vector<float> miny0, std::vector<float> minz0,
+					std::vector<float> maxx0, std::vector<float> maxy0, std::vector<float> maxz0
+					)
+		{
+			const int pId = fields->mem.indexParticle.allocate(numParticlesToAdd);
+			const int oId = fields->mem.orderParticle.allocate(numParticlesToAdd);
+
+			const int maxXId = fields->mem.maxX.allocate(numParticlesToAdd);
+			const int maxYId = fields->mem.maxY.allocate(numParticlesToAdd);
+			const int maxZId = fields->mem.maxZ.allocate(numParticlesToAdd);
+			const int minXId = fields->mem.minX.allocate(numParticlesToAdd);
+			const int minYId = fields->mem.minY.allocate(numParticlesToAdd);
+			const int minZId = fields->mem.minZ.allocate(numParticlesToAdd);
+			fields->mem.index.set(1,fields->mem.index.get(1)+numParticlesToAdd);
+
+			for(int i=0;i<numParticlesToAdd;i++)
+			{
+
+				fields->mem.indexParticle.set(pId+i,ids[orders[i]]);
+				fields->mem.orderParticle.set(oId+i,oId+i);
+
+				fields->mem.maxX.set(maxXId+i,maxx0[orders[i]]);
+				fields->mem.maxY.set(maxYId+i,maxy0[orders[i]]);
+				fields->mem.maxZ.set(maxZId+i,maxz0[orders[i]]);
+				fields->mem.minX.set(minXId+i,minx0[orders[i]]);
+				fields->mem.minY.set(minYId+i,miny0[orders[i]]);
+				fields->mem.minZ.set(minZId+i,minz0[orders[i]]);
+
+			}
+		}
 
 
 
@@ -799,6 +831,8 @@ namespace FastColDetLib
 					const int leafOfs = fields->mem.leafOffset.get(leaf);
 					const int ptr = fields->mem.index.get(leafOfs);
 					const int n = fields->mem.index.get(leafOfs+1);
+					if(n<2)
+						continue;
 
 
 
@@ -1024,7 +1058,7 @@ namespace FastColDetLib
 								for(int k=0;k<16;k++)
 								{
 									const int k3 = k&3;
-									const int id2 = j+(k>>2);
+									const int id2 = j+(k/4);
 									if(out[k])
 									{
 
