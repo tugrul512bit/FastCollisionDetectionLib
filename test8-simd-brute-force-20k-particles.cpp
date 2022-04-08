@@ -1,0 +1,234 @@
+/* FX8150 2.1GHz (dedicated computer) (single thread) = 1.4 seconds */
+/* Xeon(R) Gold 5215 CPU 2.5GHz (rextester.com server) (single thread) = 0.830 seconds */
+/* Xeon(R) Platinum 8175M 2.5GHz (piaza.io server) (single thread) = 0.405 seconds */
+/* Xeon(R) Platinum 8275CL 3.0GHz (godbolt.org server) (single thread) = 0.187 seconds */
+
+
+
+#include"FastCollisionDetectionLib.h"
+#include<atomic>
+#include<iostream>
+
+template<typename CoordType>
+struct Vector3D
+{
+    CoordType x,y,z;
+    Vector3D<CoordType> crossProduct(Vector3D<CoordType> vec)
+    {
+        Vector3D<CoordType> res;
+        res.x = y*vec.z - z*vec.y;
+        res.y = z*vec.x - x*vec.z;
+        res.z = x*vec.y - y*vec.x;
+        return res;
+    }
+
+    Vector3D<CoordType> operator - (Vector3D<CoordType> vec)
+    {
+        Vector3D<CoordType> result;
+        result.x = x-vec.x;
+        result.y = y-vec.y;
+        result.z = z-vec.z;
+        return result;
+    }
+
+    Vector3D<CoordType> operator + (Vector3D<CoordType> vec)
+    {
+        Vector3D<CoordType> result;
+        result.x = x+vec.x;
+        result.y = y+vec.y;
+        result.z = z+vec.z;
+        return result;
+    }
+
+    Vector3D<CoordType> operator * (CoordType v)
+    {
+        Vector3D<CoordType> result;
+        result.x = x*v;
+        result.y = y*v;
+        result.z = z*v;
+        return result;
+    }
+
+    // trying to simulate an expensive collision-test here
+    // otherwise it would not require sqrt at all
+    CoordType abs()
+    {
+        return std::sqrt(x*x+y*y+z*z);
+    }
+
+};
+
+template<typename CoordType>
+struct PointCloud
+{
+    Vector3D<CoordType> point[125];
+    PointCloud(CoordType x, CoordType y, CoordType z)
+    {
+        for(int i=0;i<125;i++)
+        {
+            point[i].x=x+i%5-2.5f;
+            point[i].y=y+(i/5)%5-2.5f;
+            point[i].z=z+i/25-2.5f;
+        }
+    }
+};
+
+template<typename CoordType>
+bool pointCloudIntersection(PointCloud<CoordType>& cl1, PointCloud<CoordType>& cl2)
+{
+    for(Vector3D<CoordType>& p:cl1.point)
+    {
+        for(Vector3D<CoordType>& p2:cl2.point)
+        {
+            if((p-p2).abs()<1.0f)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+template<typename CoordType>
+bool intersectDim(const CoordType minx, const CoordType maxx, const CoordType minx2, const CoordType maxx2)
+{
+    return !((maxx < minx2) || (maxx2 < minx));
+}
+#include"Generator.h"
+
+template<typename CoordType>
+struct AABBofPointCloud: public FastColDetLib::IParticle<CoordType>
+{
+    AABBofPointCloud(int idPrm, PointCloud<CoordType> * pCloudPrm)
+    {
+        id=idPrm;
+        pCloud = pCloudPrm;
+        xmin=pCloud->point[0].x;
+        ymin=pCloud->point[0].y;
+        zmin=pCloud->point[0].z;
+        xmax=pCloud->point[0].x;
+        ymax=pCloud->point[0].y;
+        zmax=pCloud->point[0].z;
+        for(int i=0;i<125;i++)
+        {
+            if(xmin>pCloud->point[i].x)
+                xmin=pCloud->point[i].x;
+            if(ymin>pCloud->point[i].y)
+                ymin=pCloud->point[i].y;
+            if(zmin>pCloud->point[i].z)
+                zmin=pCloud->point[i].z;
+            if(xmax<pCloud->point[i].x)
+                xmax=pCloud->point[i].x;
+            if(ymax<pCloud->point[i].y)
+                ymax=pCloud->point[i].y;
+            if(zmax<pCloud->point[i].z)
+                zmax=pCloud->point[i].z;
+        }
+    }
+    int id;
+    PointCloud<CoordType>* pCloud;
+    CoordType xmin;
+    CoordType ymin;
+    CoordType zmin;
+    CoordType xmax;
+    CoordType ymax;
+    CoordType zmax;
+    const CoordType getMaxX()const {return xmax;}
+    const CoordType getMaxY()const {return ymax;}
+    const CoordType getMaxZ()const {return zmax;}
+    const CoordType getMinX()const {return xmin;}
+    const CoordType getMinY()const {return ymin;}
+    const CoordType getMinZ()const {return zmin;}
+    const int getId()const {return id;}
+};
+
+int main()
+{
+
+    using cotype = float;
+    PointCloud<cotype> ico1(0,0,0);
+    // heating the CPU for benchmarking
+
+    for(int i=0;i<10000;i++)
+    {
+        PointCloud<cotype> ico2(0,0.1f,i*0.1f);
+        pointCloudIntersection(ico1,ico2);
+    }
+
+    const int N = 20004;
+    std::vector<PointCloud<cotype>> objects;
+    oofrng::Generator<64> gen;
+    for(int i=0;i<N-3;i++)
+    {
+    	objects.push_back(
+    	    PointCloud<cotype>(
+    	        gen.generate1Float()*150,gen.generate1Float()*150,gen.generate1Float()*150)
+    	);
+    }
+
+    // the teapot in stadium problem
+    objects.push_back(PointCloud<cotype>(9000,9000,9000));
+    objects.push_back(PointCloud<cotype>(9001,9001,9001));
+    objects.push_back(PointCloud<cotype>(9002,9002,9002));
+
+    std::vector<AABBofPointCloud<cotype>> AABBs;
+    for(int i=0;i<N;i++)
+    {
+        AABBs.push_back(AABBofPointCloud<cotype>(i+1000000,&objects[i]));
+    }
+
+    FastColDetLib::MemoryPool memPool;
+
+    FastColDetLib::AdaptiveGridV2 grid2_0(memPool,0,0,0,10005,10005,10005);
+
+    // benchmark begin
+    for(int j=0;j<15;j++)
+    {
+        size_t nano;
+
+        std::map<int,std::map<int,bool>> collisionMatrix;
+        {
+
+            std::atomic<int> ctr;
+            ctr.store(0);
+            {
+
+                {
+                    FastColDetLib::Bench bench(&nano);
+                    FastColDetLib::BruteForce<float> bf;
+                    {
+                        size_t t1,t2,t3;
+                        {
+                            FastColDetLib::Bench b(&t1);
+                            //grid2_0.clear();
+                        }
+
+                        {
+                            FastColDetLib::Bench b(&t2);
+                           // grid2_0.addParticles(N,AABBs.data());
+                            bf.add(AABBs.data(),N);
+                        }
+
+                        {
+                            FastColDetLib::Bench b(&t3);
+                            //grid2_0.buildTree();
+                        }
+
+                        std::cout<<t1<<" "<<t2<<" "<<t3<<std::endl;
+
+                        //auto vec = grid2_0.findCollisionsAll();
+                        auto vec = bf.getCollisionsSIMD();
+                        ctr += vec.size();
+
+                    }
+                }
+                std::cout<<N<<" vs "<<N<<" AABB collision checking by adaptive grid= "<<nano<<" nanoseconds "<<std::endl;
+                std::cout<<"total = "<<ctr.load()<<std::endl;
+            }
+
+        }
+
+    }
+    return 0;
+
+}
