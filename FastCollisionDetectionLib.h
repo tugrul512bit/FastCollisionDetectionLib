@@ -32,13 +32,62 @@ namespace FastColDetLib
 
 
 
+	template<typename T>
+	class SyncQueue
+	{
+	public:
+		SyncQueue(){}
+		void push(T t)
+		{
+			std::unique_lock<std::mutex> lc(m);
+			q.push(t);
+			c.notify_one();
+		}
 
+		void push2(T t)
+		{
+			std::unique_lock<std::mutex> lc(m);
+			q.push(t);
+			c.notify_all();
+		}
+
+		T pop()
+		{
+			std::unique_lock<std::mutex> lc(m);
+			while(q.empty())
+			{
+				c.wait(lc);
+			}
+			T result = q.front();
+			q.pop();
+			return result;
+		}
+
+		int size()
+		{
+			std::unique_lock<std::mutex> lc(m);
+			return q.size();
+		}
+	private:
+		std::queue<T> q;
+		std::mutex m;
+		std::condition_variable c;
+	};
+
+	struct MutexWithoutFalseSharing
+	{
+		std::mutex mut;
+		char padding[(64-sizeof(std::mutex))>0?(64-sizeof(std::mutex)):64];
+	};
 
 	inline
 	const int intersectDim(const float minx, const float maxx, const float minx2, const float maxx2) noexcept
 	{
 		return !((maxx < minx2) || (maxx2 < minx));
 	}
+
+
+
 
 	inline
 	void comp4vs4(	const int * const __restrict__ partId1, const int * const __restrict__ partId2,
@@ -142,6 +191,9 @@ namespace FastColDetLib
         }
 
 	};
+
+
+
 
 	/*
 	 * interface to build various objects that can collide each other
@@ -318,6 +370,14 @@ namespace FastColDetLib
 			return ((DataType* __restrict__ const)ptr)[index];
 		}
 
+
+		inline
+		DataType get(const int index) noexcept
+		{
+
+			return ((DataType* __restrict__ const)ptr)[index];
+		}
+
 		inline
 		void set(const int index, const DataType data) const noexcept
 		{
@@ -378,7 +438,7 @@ namespace FastColDetLib
 
 
 	constexpr int testParticleLimit = 128; // maximum particle AABB overlapping allowed on same cell
-	constexpr int testUniqueLimit = 32; // maximum unique numbers for accumulation (equal to or less than testParticleLimit)
+	constexpr int testUniqueLimit = 32; // maximum particle AABB overlapping allowed per particle
 	struct MemoryPool
 	{
 		void clear()
@@ -597,10 +657,10 @@ namespace FastColDetLib
 
 
 
-		inline void addParticlesWithoutInterface(const int numParticlesToAdd, std::vector<int> orders,
-					std::vector<int> ids,
-					std::vector<float> minx0, std::vector<float> miny0, std::vector<float> minz0,
-					std::vector<float> maxx0, std::vector<float> maxy0, std::vector<float> maxz0
+		inline void addParticlesWithoutInterface(const int numParticlesToAdd, const int particleOfs, Memory<int> orders,
+					Memory<int> ids,
+					Memory<float> minx0, Memory<float> miny0, Memory<float> minz0,
+					Memory<float> maxx0, Memory<float> maxy0, Memory<float> maxz0
 					)
 		{
 			const int pId = fields->mem.indexParticle.allocate(numParticlesToAdd);
@@ -616,16 +676,16 @@ namespace FastColDetLib
 
 			for(int i=0;i<numParticlesToAdd;i++)
 			{
-
-				fields->mem.indexParticle.set(pId+i,ids[orders[i]]);
+				const int ord = orders.get(i+particleOfs);
+				fields->mem.indexParticle.set(pId+i,ids.get(ord));
 				fields->mem.orderParticle.set(oId+i,oId+i);
 
-				fields->mem.maxX.set(maxXId+i,maxx0[orders[i]]);
-				fields->mem.maxY.set(maxYId+i,maxy0[orders[i]]);
-				fields->mem.maxZ.set(maxZId+i,maxz0[orders[i]]);
-				fields->mem.minX.set(minXId+i,minx0[orders[i]]);
-				fields->mem.minY.set(minYId+i,miny0[orders[i]]);
-				fields->mem.minZ.set(minZId+i,minz0[orders[i]]);
+				fields->mem.maxX.set(maxXId+i,maxx0.get(ord));
+				fields->mem.maxY.set(maxYId+i,maxy0.get(ord));
+				fields->mem.maxZ.set(maxZId+i,maxz0.get(ord));
+				fields->mem.minX.set(minXId+i,minx0.get(ord));
+				fields->mem.minY.set(minYId+i,miny0.get(ord));
+				fields->mem.minZ.set(minZId+i,minz0.get(ord));
 
 			}
 		}
@@ -801,6 +861,7 @@ namespace FastColDetLib
 
 
 
+		MutexWithoutFalseSharing mut[512];
 
 
 
@@ -823,254 +884,275 @@ namespace FastColDetLib
 
 
 			const int numLeaf = fields->mem.leafOffset.size();
+
+
+
 			for(int leaf=0;leaf<numLeaf;leaf++)
 			{
 
 				{
 
-					const int leafOfs = fields->mem.leafOffset.get(leaf);
-					const int ptr = fields->mem.index.get(leafOfs);
-					const int n = fields->mem.index.get(leafOfs+1);
-					if(n<2)
-						continue;
-
-
-
-					alignas(32)
-					int index[testParticleLimit];
-
-					alignas(32)
-					int orderId[testParticleLimit];
-
-					alignas(32)
-					int partId[testParticleLimit];
-
-					alignas(32)
-					float minx[testParticleLimit];
-
-					alignas(32)
-					float miny[testParticleLimit];
-
-					alignas(32)
-					float minz[testParticleLimit];
-
-					alignas(32)
-					float maxx[testParticleLimit];
-
-					alignas(32)
-					float maxy[testParticleLimit];
-
-					alignas(32)
-					float maxz[testParticleLimit];
-					constexpr int simd = 4;
-					constexpr int simd1 = simd-1;
-					const int n8 = n-(n&simd1);
-					for(int i=0;i<n8;i+=simd)
 					{
-						for(int j=0;j<simd;j++)
-							index[i+j]   = ptr + i + j;
-						for(int j=0;j<simd;j++)
-							orderId[i+j] = fields->mem.orderParticle.get(index[i+j]);
-						for(int j=0;j<simd;j++)
-							partId[i+j]  = fields->mem.indexParticle.get(orderId[i+j]);
-						for(int j=0;j<simd;j++)
-							minx[i+j]    = fields->mem.minX.get(orderId[i+j]);
-						for(int j=0;j<simd;j++)
-							miny[i+j]    = fields->mem.minY.get(orderId[i+j]);
-						for(int j=0;j<simd;j++)
-							minz[i+j]    = fields->mem.minZ.get(orderId[i+j]);
-						for(int j=0;j<simd;j++)
-							maxx[i+j]    = fields->mem.maxX.get(orderId[i+j]);
-						for(int j=0;j<simd;j++)
-							maxy[i+j]    = fields->mem.maxY.get(orderId[i+j]);
-						for(int j=0;j<simd;j++)
-							maxz[i+j]    = fields->mem.maxZ.get(orderId[i+j]);
 
-					}
+						const int leafOfs = fields->mem.leafOffset.get(leaf);
+						const int ptr = fields->mem.index.get(leafOfs);
+						const int n = fields->mem.index.get(leafOfs+1);
+						if(n<2)
+							continue;
+							//continue;
 
-					for(int i=n8;i<n;i++)
-					{
-							index[i]   = ptr + i;
-							orderId[i] = fields->mem.orderParticle.get(index[i]);
-							partId[i]  = fields->mem.indexParticle.get(orderId[i]);
-							minx[i]    = fields->mem.minX.get(orderId[i]);
-							miny[i]    = fields->mem.minY.get(orderId[i]);
-							minz[i]    = fields->mem.minZ.get(orderId[i]);
-							maxx[i]    = fields->mem.maxX.get(orderId[i]);
-							maxy[i]    = fields->mem.maxY.get(orderId[i]);
-							maxz[i]    = fields->mem.maxZ.get(orderId[i]);
-					}
-
-					for(int i=n;i<testParticleLimit;i++)
-					{
-						index[i]   = -1;
-						orderId[i]   = -1;
-						partId[i]   = -1;
-						minx[i] = 1000000000000000000.0f;
-						miny[i] = 1000000000000000000.0f;
-						minz[i] = 1000000000000000000.0f;
-						maxx[i] = 1000000000000000000.0f;
-						maxy[i] = 1000000000000000000.0f;
-						maxz[i] = 1000000000000000000.0f;
-					}
-
-
-
-					// SIMD computation (tiled computing)
-					{
 						alignas(32)
-						int out[16];
+						int index[testParticleLimit];
 
-						for(int i=0;i<testParticleLimit;i+=simd)
+						alignas(32)
+						int orderId[testParticleLimit];
+
+						alignas(32)
+						int partId[testParticleLimit];
+
+						alignas(32)
+						float minx[testParticleLimit];
+
+						alignas(32)
+						float miny[testParticleLimit];
+
+						alignas(32)
+						float minz[testParticleLimit];
+
+						alignas(32)
+						float maxx[testParticleLimit];
+
+						alignas(32)
+						float maxy[testParticleLimit];
+
+						alignas(32)
+						float maxz[testParticleLimit];
+						constexpr int simd = 4;
+						constexpr int simd1 = simd-1;
+						const int n8 = n-(n&simd1);
+						for(int i=0;i<n8;i+=simd)
 						{
-							if(i>=n)
-								break;
+							for(int j=0;j<simd;j++)
+								index[i+j]   = ptr + i + j;
+							for(int j=0;j<simd;j++)
+								orderId[i+j] = fields->mem.orderParticle.get(index[i+j]);
+							for(int j=0;j<simd;j++)
+								partId[i+j]  = fields->mem.indexParticle.get(orderId[i+j]);
+							for(int j=0;j<simd;j++)
+								minx[i+j]    = fields->mem.minX.get(orderId[i+j]);
+							for(int j=0;j<simd;j++)
+								miny[i+j]    = fields->mem.minY.get(orderId[i+j]);
+							for(int j=0;j<simd;j++)
+								minz[i+j]    = fields->mem.minZ.get(orderId[i+j]);
+							for(int j=0;j<simd;j++)
+								maxx[i+j]    = fields->mem.maxX.get(orderId[i+j]);
+							for(int j=0;j<simd;j++)
+								maxy[i+j]    = fields->mem.maxY.get(orderId[i+j]);
+							for(int j=0;j<simd;j++)
+								maxz[i+j]    = fields->mem.maxZ.get(orderId[i+j]);
 
-							FastUnique<int32_t, testUniqueLimit> * map[simd] = {
-									orderId[i]>=0?fields->mem.allPairsCollmapping.getPtr(orderId[i]):nullptr,
-									orderId[i+1]>=0?fields->mem.allPairsCollmapping.getPtr(orderId[i+1]):nullptr,
-									orderId[i+2]>=0?fields->mem.allPairsCollmapping.getPtr(orderId[i+2]):nullptr,
-									orderId[i+3]>=0?fields->mem.allPairsCollmapping.getPtr(orderId[i+3]):nullptr
-							};
+						}
 
-							alignas(32)
-							int tileId1[16]={
-									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									partId[i+0],partId[i+1],partId[i+2],partId[i+3]
-							};
+						for(int i=n8;i<n;i++)
+						{
+								index[i]   = ptr + i;
+								orderId[i] = fields->mem.orderParticle.get(index[i]);
+								partId[i]  = fields->mem.indexParticle.get(orderId[i]);
+								minx[i]    = fields->mem.minX.get(orderId[i]);
+								miny[i]    = fields->mem.minY.get(orderId[i]);
+								minz[i]    = fields->mem.minZ.get(orderId[i]);
+								maxx[i]    = fields->mem.maxX.get(orderId[i]);
+								maxy[i]    = fields->mem.maxY.get(orderId[i]);
+								maxz[i]    = fields->mem.maxZ.get(orderId[i]);
+						}
 
-							for(int k=0;k<4;k++)
+						for(int i=n;i<testParticleLimit;i++)
+						{
+							index[i]   = -1;
+							orderId[i]   = -1;
+							partId[i]   = -1;
+							minx[i] = 1000000000000000000.0f;
+							miny[i] = 1000000000000000000.0f;
+							minz[i] = 1000000000000000000.0f;
+							maxx[i] = 1000000000000000000.0f;
+							maxy[i] = 1000000000000000000.0f;
+							maxz[i] = 1000000000000000000.0f;
+						}
+
+
+
+						// SIMD computation (tiled computing)
+						{
+
+
+							for(int i=0;i<testParticleLimit;i+=simd)
 							{
-								tileId1[k+4]=tileId1[k];
-								tileId1[k+8]=tileId1[k];
-								tileId1[k+12]=tileId1[k];
-							}
-
-
-
-							alignas(32)
-							float tileMinX1[16]={
-									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									minx[i+0],minx[i+1],minx[i+2],minx[i+3]
-							};
-							for(int k=0;k<4;k++)
-							{
-								tileMinX1[k+4]=tileMinX1[k];
-								tileMinX1[k+8]=tileMinX1[k];
-								tileMinX1[k+12]=tileMinX1[k];
-							}
-
-
-							alignas(32)
-							float tileMinY1[16]={
-									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									miny[i+0],miny[i+1],miny[i+2],miny[i+3]
-							};
-
-							for(int k=0;k<4;k++)
-							{
-								tileMinY1[k+4]=tileMinY1[k];
-								tileMinY1[k+8]=tileMinY1[k];
-								tileMinY1[k+12]=tileMinY1[k];
-							}
-
-
-
-							alignas(32)
-							float tileMinZ1[16]={
-									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									minz[i+0],minz[i+1],minz[i+2],minz[i+3]
-
-							};
-
-							for(int k=0;k<4;k++)
-							{
-								tileMinZ1[k+4]=tileMinZ1[k];
-								tileMinZ1[k+8]=tileMinZ1[k];
-								tileMinZ1[k+12]=tileMinZ1[k];
-							}
-
-
-
-
-
-							alignas(32)
-							float tileMaxX1[16]={
-									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3]
-							};
-
-							for(int k=0;k<4;k++)
-							{
-								tileMaxX1[k+4]=tileMaxX1[k];
-								tileMaxX1[k+8]=tileMaxX1[k];
-								tileMaxX1[k+12]=tileMaxX1[k];
-							}
-
-							alignas(32)
-							float tileMaxY1[16]={
-									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3]
-							};
-
-							for(int k=0;k<4;k++)
-							{
-								tileMaxY1[k+4]=tileMaxY1[k];
-								tileMaxY1[k+8]=tileMaxY1[k];
-								tileMaxY1[k+12]=tileMaxY1[k];
-							}
-
-							alignas(32)
-							float tileMaxZ1[16]={
-									// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
-									maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3]
-							};
-
-							for(int k=0;k<4;k++)
-							{
-								tileMaxZ1[k+4]=tileMaxZ1[k];
-								tileMaxZ1[k+8]=tileMaxZ1[k];
-								tileMaxZ1[k+12]=tileMaxZ1[k];
-							}
-
-
-
-
-							for(int j=i;j<testParticleLimit;j+=simd)
-							{
-								if(j>=n)
+								if(i>=n)
 									break;
-								// 0v0, 0v1, 0v2, 0v3,
-								// 1v0, 1v1, 1v2, 1v3,
-								// 2v0, 2v1, 2v2, 2v3,
-								// 3v0, 3v1, 3v2, 3v3,
 
-								comp4vs4(	tileId1, partId+j,
-											tileMinX1, minx+j,
-											tileMinY1, miny+j,
-											tileMinZ1, minz+j,
-											tileMaxX1, maxx+j,
-											tileMaxY1, maxy+j,
-											tileMaxZ1, maxz+j,
-											out
-								);
+								alignas(32)
+								int out[16];
 
-								for(int k=0;k<16;k++)
+								const bool test[simd]={ orderId[i]>=0, orderId[i+1]>=0, orderId[i+2]>=0, orderId[i+3]>=0 };
+
+
+								FastUnique<int32_t, testUniqueLimit> * map[simd] = {
+										test[0]?fields->mem.allPairsCollmapping.getPtr(orderId[i]):nullptr,
+										test[1]?fields->mem.allPairsCollmapping.getPtr(orderId[i+1]):nullptr,
+										test[2]?fields->mem.allPairsCollmapping.getPtr(orderId[i+2]):nullptr,
+										test[3]?fields->mem.allPairsCollmapping.getPtr(orderId[i+3]):nullptr
+								};
+
+
+
+
+								alignas(32)
+								int tileId1[16]={
+										// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+										partId[i+0],partId[i+1],partId[i+2],partId[i+3]
+								};
+
+								for(int k=0;k<4;k++)
 								{
-									const int k3 = k&3;
-									const int id2 = j+(k/4);
-									if(out[k])
-									{
+									tileId1[k+4]=tileId1[k];
+									tileId1[k+8]=tileId1[k];
+									tileId1[k+12]=tileId1[k];
+								}
 
-										if(map[k3])
-											map[k3]->insert(orderId[id2]);
+
+
+								alignas(32)
+								float tileMinX1[16]={
+										// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+										minx[i+0],minx[i+1],minx[i+2],minx[i+3]
+								};
+								for(int k=0;k<4;k++)
+								{
+									tileMinX1[k+4]=tileMinX1[k];
+									tileMinX1[k+8]=tileMinX1[k];
+									tileMinX1[k+12]=tileMinX1[k];
+								}
+
+
+								alignas(32)
+								float tileMinY1[16]={
+										// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+										miny[i+0],miny[i+1],miny[i+2],miny[i+3]
+								};
+
+								for(int k=0;k<4;k++)
+								{
+									tileMinY1[k+4]=tileMinY1[k];
+									tileMinY1[k+8]=tileMinY1[k];
+									tileMinY1[k+12]=tileMinY1[k];
+								}
+
+
+
+								alignas(32)
+								float tileMinZ1[16]={
+										// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+										minz[i+0],minz[i+1],minz[i+2],minz[i+3]
+
+								};
+
+								for(int k=0;k<4;k++)
+								{
+									tileMinZ1[k+4]=tileMinZ1[k];
+									tileMinZ1[k+8]=tileMinZ1[k];
+									tileMinZ1[k+12]=tileMinZ1[k];
+								}
+
+
+
+
+
+								alignas(32)
+								float tileMaxX1[16]={
+										// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+										maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3]
+								};
+
+								for(int k=0;k<4;k++)
+								{
+									tileMaxX1[k+4]=tileMaxX1[k];
+									tileMaxX1[k+8]=tileMaxX1[k];
+									tileMaxX1[k+12]=tileMaxX1[k];
+								}
+
+								alignas(32)
+								float tileMaxY1[16]={
+										// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+										maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3]
+								};
+
+								for(int k=0;k<4;k++)
+								{
+									tileMaxY1[k+4]=tileMaxY1[k];
+									tileMaxY1[k+8]=tileMaxY1[k];
+									tileMaxY1[k+12]=tileMaxY1[k];
+								}
+
+								alignas(32)
+								float tileMaxZ1[16]={
+										// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+										maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3]
+								};
+
+								for(int k=0;k<4;k++)
+								{
+									tileMaxZ1[k+4]=tileMaxZ1[k];
+									tileMaxZ1[k+8]=tileMaxZ1[k];
+									tileMaxZ1[k+12]=tileMaxZ1[k];
+								}
+
+
+
+
+								for(int j=i;j<testParticleLimit;j+=simd)
+								{
+									if(j>=n)
+										break;
+									// 0v0, 0v1, 0v2, 0v3,
+									// 1v0, 1v1, 1v2, 1v3,
+									// 2v0, 2v1, 2v2, 2v3,
+									// 3v0, 3v1, 3v2, 3v3,
+
+									comp4vs4(	tileId1, partId+j,
+												tileMinX1, minx+j,
+												tileMinY1, miny+j,
+												tileMinZ1, minz+j,
+												tileMaxX1, maxx+j,
+												tileMaxY1, maxy+j,
+												tileMaxZ1, maxz+j,
+												out
+									);
+
+
+
+
+									for(int k=0;k<16;k++)
+									{
+										const int k3 = k&3;
+										const int id2 = j+(k/4);
+										if(out[k])
+										{
+											if(test[k3])
+											{
+
+												map[k3]->insert(orderId[id2]);
+
+											}
+
+										}
 									}
 								}
+
+
 							}
 						}
+
 					}
-
-
 				}
 
 			}
@@ -1078,24 +1160,30 @@ namespace FastColDetLib
 
 
 
-
-			for(int i=0;i<resetN;i++)
 			{
-				FastUnique<int32_t, testUniqueLimit>& map = fields->mem.allPairsCollmapping.getRef(i);
-				const int ms = map.size();
-				const int allocIdx = fields->mem.allPairsColl.allocate(ms);
 
-				for(int j=0;j<ms;j++)
+				for(int i=0;i<resetN;i++)
 				{
-					fields->mem.allPairsColl.set(allocIdx+j,std::pair<int,int>(fields->mem.indexParticle.get(i),fields->mem.indexParticle.get(map.get(j))));
+					FastUnique<int32_t, testUniqueLimit>& map = fields->mem.allPairsCollmapping.getRef(i);
+					const int ms = map.size();
+					const int allocIdx = fields->mem.allPairsColl.allocate(ms);
+
+					for(int j=0;j<ms;j++)
+					{
+						fields->mem.allPairsColl.set(allocIdx+j,std::pair<int,int>(fields->mem.indexParticle.get(i),fields->mem.indexParticle.get(map.get(j))));
+
+					}
 				}
+
+
+				result.resize(fields->mem.allPairsColl.size());
+				fields->mem.allPairsColl.writeTo(result);
 			}
 
-
-			result.resize(fields->mem.allPairsColl.size());
-			fields->mem.allPairsColl.writeTo(result);
 			return result;
 		}
+
+
 
 		void buildTree()
 		{
@@ -1357,11 +1445,7 @@ namespace FastColDetLib
 
 
 	using GridDataType = char;
-	struct MutexWithoutFalseSharing
-	{
-		std::mutex mut;
-		char padding[(64-sizeof(std::mutex))>0?(64-sizeof(std::mutex)):64];
-	};
+
 
 	// Fixed grid of cells (adaptive if a cell overflows)
 	template<typename CoordType>
@@ -1443,42 +1527,6 @@ namespace FastColDetLib
 	};
 
 
-
-	template<typename T>
-	class SyncQueue
-	{
-	public:
-		SyncQueue(){}
-		void push(T t)
-		{
-			std::unique_lock<std::mutex> lc(m);
-			q.push(t);
-			c.notify_one();
-		}
-
-		void push2(T t)
-		{
-			std::unique_lock<std::mutex> lc(m);
-			q.push(t);
-			c.notify_all();
-		}
-
-		T pop()
-		{
-			std::unique_lock<std::mutex> lc(m);
-			while(q.empty())
-			{
-				c.wait(lc);
-			}
-			T result = q.front();
-			q.pop();
-			return result;
-		}
-	private:
-		std::queue<T> q;
-		std::mutex m;
-		std::condition_variable c;
-	};
 
 
 	template<typename CoordType>
@@ -2070,6 +2118,154 @@ public:
 			for(int i=0;i<numParticlesToAdd;i++)
 				particles.push_back(static_cast<IParticle<CoordType>*>(particlesPrm+i));
 		}
+
+		std::vector<std::pair<int,int>> computeCollisionsSIMD(const int numParticlesToAdd, std::vector<int> orders,
+					std::vector<int> ids,
+					std::vector<float> minx0, std::vector<float> miny0, std::vector<float> minz0,
+					std::vector<float> maxx0, std::vector<float> maxy0, std::vector<float> maxz0
+					)
+		{
+			std::vector<std::pair<int,int>> result;
+			std::vector<CoordType> minx,miny,minz,maxx,maxy,maxz;
+			std::vector<int> id;
+			const int sz = numParticlesToAdd;
+			for(int i=0;i<sz;i++)
+			{
+
+				minx.push_back(minx0[orders[i]]);
+				miny.push_back(miny0[orders[i]]);
+				minz.push_back(minz0[orders[i]]);
+				maxx.push_back(maxx0[orders[i]]);
+				maxy.push_back(maxy0[orders[i]]);
+				maxz.push_back(maxz0[orders[i]]);
+				id.push_back(ids[orders[i]]);
+			}
+
+			const int sz4 = sz - (sz&3);
+			for(int i=0;i<sz4;i+=4)
+			{
+
+				alignas(32)
+				const int tileId1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						id[i+0],id[i+1],id[i+2],id[i+3],
+						id[i+0],id[i+1],id[i+2],id[i+3],
+						id[i+0],id[i+1],id[i+2],id[i+3],
+						id[i+0],id[i+1],id[i+2],id[i+3]
+				};
+
+
+
+				alignas(32)
+				const float tileMinX1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						minx[i+0],minx[i+1],minx[i+2],minx[i+3],
+						minx[i+0],minx[i+1],minx[i+2],minx[i+3],
+						minx[i+0],minx[i+1],minx[i+2],minx[i+3],
+						minx[i+0],minx[i+1],minx[i+2],minx[i+3]
+				};
+
+
+				alignas(32)
+				const float tileMinY1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						miny[i+0],miny[i+1],miny[i+2],miny[i+3],
+						miny[i+0],miny[i+1],miny[i+2],miny[i+3],
+						miny[i+0],miny[i+1],miny[i+2],miny[i+3],
+						miny[i+0],miny[i+1],miny[i+2],miny[i+3]
+				};
+
+
+
+				alignas(32)
+				const float tileMinZ1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						minz[i+0],minz[i+1],minz[i+2],minz[i+3],
+						minz[i+0],minz[i+1],minz[i+2],minz[i+3],
+						minz[i+0],minz[i+1],minz[i+2],minz[i+3],
+						minz[i+0],minz[i+1],minz[i+2],minz[i+3]
+				};
+
+
+
+
+
+
+				alignas(32)
+				const float tileMaxX1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3],
+						maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3],
+						maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3],
+						maxx[i+0],maxx[i+1],maxx[i+2],maxx[i+3]
+				};
+
+
+
+				alignas(32)
+				const float tileMaxY1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3],
+						maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3],
+						maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3],
+						maxy[i+0],maxy[i+1],maxy[i+2],maxy[i+3]
+				};
+
+
+
+				alignas(32)
+				const float tileMaxZ1[16]={
+						// 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+						maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3],
+						maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3],
+						maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3],
+						maxz[i+0],maxz[i+1],maxz[i+2],maxz[i+3]
+				};
+
+				for(int j=i;j<sz4;j+=4)
+				{
+					int out[16];
+					comp4vs4(	tileId1, id.data()+j,
+								tileMinX1, minx.data()+j,
+								tileMinY1, miny.data()+j,
+								tileMinZ1, minz.data()+j,
+								tileMaxX1, maxx.data()+j,
+								tileMaxY1, maxy.data()+j,
+								tileMaxZ1, maxz.data()+j,
+								out
+					);
+
+					for(int k=0;k<16;k++)
+					{
+						if(out[k])
+						{
+							result.push_back(std::pair<int,int>(id[i+(k&3)],id[j+k/4]));
+						}
+					}
+				}
+			}
+
+			for(int i=0;i<sz;i++)
+			{
+				for(int j=sz4;j<sz;j++)
+				{
+					if(i!=j && id[i] < id[j])
+					{
+						if(intersectDim(minx[i],maxx[i],minx[j],maxx[j]))
+							if(intersectDim(miny[i],maxy[i],miny[j],maxy[j]))
+								if(intersectDim(minz[i],maxz[i],minz[j],maxz[j]))
+								{
+									result.push_back(std::pair<int,int>(id[i],id[j]));
+								}
+
+					}
+				}
+			}
+
+			return result;
+		}
+
+
 
 		std::vector<std::pair<int,int>> getCollisionsSIMD()
 		{
