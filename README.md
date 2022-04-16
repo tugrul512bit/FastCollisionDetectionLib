@@ -22,6 +22,7 @@ C++ fast collision detection for uniform(and non-uniform)-distributed AABB parti
 - - 100+ FPS for new CPUs
 - Better performance stability compared to non-sparse version
 - Better SIMD support on all-pairs computation method using tiled-computing
+- Non-zero based object-id values supported (getId() method in IParticle<float> interface)
 
 ```C++
 // prepare memory pool
@@ -67,6 +68,38 @@ while(simulation)
 }
 
 ```
+
+## Multithreaded Tree of Sparse - Linear - Adaptive Grid
+
+- 60 FPS for 40000 particles' AABB all-pair computations
+- Bottlenecked by RAM bandwidth and mutex-array locking throughput
+- Only zero-based object-id values supported
+
+```C++
+    // 7 threads with load-balancing by a tree, mapped to (0,0,0)-(10005,10005,10005) region
+    AdaptiveGridTree<7> test(0,0,0,10005,10005,10005);
+
+    for(int i=0;i<100;i++)
+    {
+		size_t nano;
+		{
+			FastColDetLib::Bench bench(&nano);
+			
+			// clear contents of memory pool of adaptive grid tree
+			test.clear();
+			
+			// AABBs is a vector of objects that implements IParticle<float> interface 
+	                // (only zero-based object-id values supported from getId() method of IParticle<float>)
+			test.addParticles(N,AABBs.data()); 
+			
+			// non-duplicate pairs of collisions 
+			const auto coll = test.computeAllPairs();
+			std::cout<<"c="<<coll.size()<<std::endl;
+		}
+		std::cout<<"t="<<nano<<std::endl;
+    }
+```
+
 
 
 For details, please visit ![https://github.com/tugrul512bit/FastCollisionDetectionLib/wiki](https://github.com/tugrul512bit/FastCollisionDetectionLib/wiki) wiki page.
