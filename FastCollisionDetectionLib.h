@@ -462,6 +462,13 @@ namespace FastColDetLib
 			nodeInvHeight.reset();
 			nodeInvDepth.reset();
 			leafOffset.reset();
+			allPairsColl.reset();
+			allPairsCollmapping.reset();
+			for(int i=0;i<64;i++)
+			{
+				idTmp[i].reset();
+				orderTmp[i].reset();
+			}
 		}
 
 
@@ -657,7 +664,7 @@ namespace FastColDetLib
 
 
 
-		inline void addParticlesWithoutInterface(const int numParticlesToAdd, const int particleOfs, Memory<int> orders,
+		inline void addParticlesWithoutInterface(const int numParticlesToAdd, const int particleOfs, std::vector<int> orders,
 					Memory<int> ids,
 					Memory<float> minx0, Memory<float> miny0, Memory<float> minz0,
 					Memory<float> maxx0, Memory<float> maxy0, Memory<float> maxz0
@@ -676,7 +683,7 @@ namespace FastColDetLib
 
 			for(int i=0;i<numParticlesToAdd;i++)
 			{
-				const int ord = orders.get(i+particleOfs);
+				const int ord = orders[i+particleOfs];
 				fields->mem.indexParticle.set(pId+i,ids.get(ord));
 				fields->mem.orderParticle.set(oId+i,oId+i);
 
@@ -861,7 +868,6 @@ namespace FastColDetLib
 
 
 
-		MutexWithoutFalseSharing mut[512];
 
 
 
@@ -870,12 +876,13 @@ namespace FastColDetLib
 
 			const int resetN = fields->mem.indexParticle.size();
 
+			fields->mem.allPairsCollmapping.reset();
 			fields->mem.allPairsCollmapping.allocate(resetN);
 			for(int i=0;i<resetN;i++)
 			{
 				fields->mem.allPairsCollmapping.getRef(i).reset();
 			}
-			fields->mem.allPairsCollmapping.reset();
+
 
 
 
@@ -1226,12 +1233,12 @@ namespace FastColDetLib
 
 				// if child node pointer not set up
 
-
-				if(fields->mem.index.get(nodeOffset+2)<nodeOffset && fields->mem.index.get(fields->mem.index.get(nodeOffset+2)+2)>=0)
+				//std::cout<<"debug 1              "<<nodeOffset+2<<" "<<fields->mem.index.get(nodeOffset+2)<<" "<<fields->mem.index.size()<<std::endl;
+				if(fields->mem.index.get(nodeOffset+2)<nodeOffset && (fields->mem.index.get(nodeOffset+2)+2)>=0 && fields->mem.index.get(fields->mem.index.get(nodeOffset+2)+2)>=0)
 				{
 					fields->mem.index.set(fields->mem.index.get(nodeOffset+2)+2,-(nodeOffset+1));
 				}
-
+				//std::cout<<"debug 2"<<std::endl;
 
 				int childNodeCount = 0;
 
