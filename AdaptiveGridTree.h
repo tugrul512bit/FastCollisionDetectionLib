@@ -2,7 +2,7 @@
  * AdaptiveGridTree.h
  *
  *  Created on: Apr 14, 2022
- *      Author: root
+ *      Author: tugrul
  */
 
 #ifndef ADAPTIVEGRIDTREE_H_
@@ -24,12 +24,11 @@ struct GridTreeNode
 	{
 		for(int i=0;i<numNodesPerNode;i++)
 			childNodes[i]=nullptr;
-		parOrderOfs = -1;
-		parOrderN = 0;
+
 	}
 	std::shared_ptr<GridTreeNode> childNodes[numNodesPerNode];
-	int parOrderOfs;
-	int parOrderN;
+	std::vector<int> parOrder;
+
 };
 
 
@@ -40,21 +39,20 @@ public:
 	AdaptiveGridTree(const float minx, const float miny, const float minz, const float maxx, const float maxy, const float maxz):
 		minX(minx),minY(miny),minZ(minz),maxX(maxx),maxY(maxy),maxZ(maxz), workCtr(0)
 	{
-		for(int i=0;i<concurrency;i++)
-		{
-			memPool.push(FastColDetLib::MemoryPool());
-		}
+
 
 		for(int i=0;i<concurrency;i++)
 		{
 			thr.emplace_back([&](){
+				FastColDetLib::MemoryPool mem;
 				bool work=true;
 				while(work)
 				{
 					auto f = taskQueue.pop();
 					if(f)
 					{
-						f();
+
+						f(mem);
 						taskCompleteQueue.push2(true);
 					}
 					else
@@ -81,7 +79,7 @@ public:
 
 	void clear()
 	{
-		parOrder.reset();
+		std::lock_guard<std::mutex> lg(mut);
 		parId.reset();
 		parMinX.reset();
 		parMinY.reset();
@@ -94,6 +92,7 @@ public:
 	template<typename Derived>
 	void addParticles(const int N, Derived * ptr)
 	{
+		std::lock_guard<std::mutex> lg(mut);
 		const int ofsId = parId.allocate(N);
 		const int ofsMinx = parMinX.allocate(N);
 		const int ofsMiny = parMinY.allocate(N);
@@ -122,6 +121,7 @@ public:
 		std::vector<std::pair<int,int>> resultRoot;
 		if(!parent)
 		{
+
 			workCtr=0;
 			const int N = parId.size();
 			mappingRoot.reset();
@@ -133,14 +133,12 @@ public:
 			maxy = maxY;
 			maxz = maxZ;
 			parent = &root;
-			parOrder.reset();
 
-			const int ofs = parOrder.allocate(N);
-			parent->parOrderOfs = ofs;
-			parent->parOrderN = N;
+
+
 			for(int i=0;i<N;i++)
 			{
-				parOrder.set(ofs+i,i);
+				parent->parOrder.push_back(i);
 				mappingRoot.getRef(i).reset();
 			}
 			result = &resultRoot;
@@ -151,11 +149,12 @@ public:
 
 
 			// build tree until 4096 or less particles left for each leaf
-			if(parent->parOrderN>10000)
+			if(parent->parOrder.size()>10000)
 			{
-				const int N = parent->parOrderN;
+				const int N = parent->parOrder.size();
 				for(int i=0;i<numNodesPerNode;i++)
 				{
+
 					parent->childNodes[i]=std::make_shared<GridTreeNode>();
 
 				}
@@ -172,7 +171,7 @@ public:
 				for(int i=0;i<N;i++)
 				{
 					// calculate overlapping region's cell indices
-					const int parOrdI = parOrder.get(parent->parOrderOfs + i);
+					const int parOrdI = parent->parOrder[i];
 					const int mincornerstartx = std::floor((parMinX.get(parOrdI) - minx) * stepx);
 					const int maxcornerendx = std::floor((parMaxX.get(parOrdI) - minx) * stepx);
 					const int mincornerstarty = std::floor((parMinY.get(parOrdI) - miny) * stepy);
@@ -187,26 +186,25 @@ public:
 								if(ii<0 || ii>=4 || j<0 || j>=4 || k<0 || k>=4)
 									continue;
 								auto & acc = accumulator[k+j*4+ii*16];
-								acc.set(acc.allocate(1), parOrder.get(parent->parOrderOfs + i));
-
+								acc.set(acc.allocate(1), parOrdI);
 					}
 				}
 
-				for(int i=0;i<numNodesPerNode;i++)
 				{
-					const int n = accumulator[i].size();
-					const int ofs0 = parOrder.allocate(n);
-					parent->childNodes[i]->parOrderOfs = ofs0;
-					parent->childNodes[i]->parOrderN=n;
-					for(int j=0;j<n;j++)
+
+					for(int i=0;i<numNodesPerNode;i++)
 					{
-						parOrder.set(ofs0+j,accumulator[i].get(j));
+						const int n = accumulator[i].size();
+						for(int j=0;j<n;j++)
+						{
+							parent->childNodes[i]->parOrder.push_back(accumulator[i].get(j));
+						}
 					}
 				}
 
 				for(int i=0;i<numNodesPerNode;i++)
 				{
-					if(parent->childNodes[i]->parOrderN>1)
+					if(parent->childNodes[i]->parOrder.size()>1)
 					{
 								computeAllPairs(parent->childNodes[i].get(),
 										minx+(i&3)/stepx,         miny+((i/4)&3)/stepy,         minz+(i/16)/stepz,
@@ -218,27 +216,39 @@ public:
 			else
 			{
 
-				if(parent->parOrderN>1)
+				if(parent->parOrder.size()>1)
 				{
 
 					// offload to another thread as a sparse-linear-adaptive-grid
 					workCtr++;
-					taskQueue.push2([&,parent,minx,miny,minz,maxx,maxy,maxz,result]()
+
+					taskQueue.push2([&,parent,minx,miny,minz,maxx,maxy,maxz,result](FastColDetLib::MemoryPool  mem)
 					{
-						auto mem = memPool.pop();
+
 						FastColDetLib::AdaptiveGridV2 subGrid(mem,minx,miny,minz,maxx,maxy,maxz);
 						subGrid.clear();
-						subGrid.addParticlesWithoutInterface(parent->parOrderN, parent->parOrderOfs, parOrder,
-											parId,
-											parMinX, parMinY, parMinZ,
-											parMaxX, parMaxY, parMaxZ
-											);
-						subGrid.buildTree();
+						{
+
+							subGrid.addParticlesWithoutInterface(parent->parOrder.size(), 0, parent->parOrder,
+												parId,
+												parMinX, parMinY, parMinZ,
+												parMaxX, parMaxY, parMaxZ
+												);
+
+							subGrid.buildTree();
+						}
+
+
 
 						const std::vector<std::pair<int,int>> coll = subGrid.findCollisionsAll();
-						memPool.push(mem);
-						std::lock_guard<std::mutex> lg(mut);
-						result->insert(result->end(),coll.begin(),coll.end());
+
+
+						if(coll.size()>0)
+						{
+							std::lock_guard<std::mutex> lg(mut);
+							result->insert(result->end(),coll.begin(),coll.end());
+						}
+
 					});
 
 				}
@@ -275,9 +285,9 @@ public:
 						for(int i=0;i<nr;i+=1000)
 						{
 							workCtr++;
-							taskQueue.push2([&,i]()
+							taskQueue.push2([&,i](FastColDetLib::MemoryPool & mem)
 							{
-								unsigned int lastId = -1;
+								unsigned int lastId = 2000000000; // so you don't have 2 billion particles in a game right?
 								mutArr[lastId&mutN1].mut.lock();
 								for(int j=0;j<1000;j++)
 								{
@@ -339,7 +349,7 @@ public:
 					for(int i0=0;i0<N2;i0+=10000)
 					{
 						workCtr++;
-						taskQueue.push2([&,i0]()
+						taskQueue.push2([&,i0](FastColDetLib::MemoryPool & mem)
 						{
 
 							for(int j=0;j<10000;j++)
@@ -389,9 +399,9 @@ public:
 private:
 	std::mutex mut;
 	std::vector<std::thread> thr;
-	FastColDetLib::SyncQueue<std::function<void(void)>> taskQueue;
+	FastColDetLib::SyncQueue<std::function<void(FastColDetLib::MemoryPool &)>> taskQueue;
 	FastColDetLib::SyncQueue<bool> taskCompleteQueue;
-	FastColDetLib::SyncQueue<FastColDetLib::MemoryPool> memPool;
+
 	FastColDetLib::Memory<std::pair<int,int>> resultRootMem;
 	FastColDetLib::Memory<FastColDetLib::FastUnique<int32_t,FastColDetLib::testUniqueLimit>> mappingRoot;
 
@@ -408,8 +418,9 @@ private:
 	FastColDetLib::Memory<float> parMaxY;
 	FastColDetLib::Memory<float> parMaxZ;
 
-	FastColDetLib::Memory<int> parOrder;
+
 	FastColDetLib::Memory<int> accumulator[numNodesPerNode];
+
 };
 
 
