@@ -74,6 +74,7 @@ while(simulation)
 - 60 FPS for 40000 particles' AABB all-pair computations
 - Bottlenecked by RAM bandwidth and mutex-array locking throughput
 - Only zero-based object-id values supported
+- Work load is balanced on particles, not volumes, this makes better distribution of particles on threads but causes duplicated work due to merging of results from all leaf nodes
 
 ```C++
     // 7 threads with load-balancing by a tree, mapped to (0,0,0)-(10005,10005,10005) region
