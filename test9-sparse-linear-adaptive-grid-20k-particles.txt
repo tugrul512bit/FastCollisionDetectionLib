@@ -2,7 +2,7 @@
 /* Xeon(R) Gold 5215 CPU 2.5GHz (rextester.com server) (single thread) = 0.013 seconds */
 /* Xeon(R) Platinum 8175M 2.5GHz (piaza.io server) (single thread) = 0.009 seconds */
 /* Xeon(R) Platinum 8275CL 3.0GHz (godbolt.org server) (single thread) = 0.006 seconds */
-/* Ryzen 9 7900 5.4GHz (single thread) = 0.008 milliseconds*/
+/* Ryzen 9 7900 5.4GHz (single thread) = 0.008 seconds (brute force = 1.5 seconds)*/
 
 
 
